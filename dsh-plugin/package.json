@@ -1,0 +1,33 @@
+{
+  "name": "@local/dataagent-dsh",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DataAgent SQL Studio for DeepSeek Harness: cloud SQL gateway, execution history, knowledge base, and MCP optimization tools.",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  }
+}

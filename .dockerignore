@@ -1,0 +1,7 @@
+target/
+data/
+node_modules/
+.git/
+_inspect/
+*.log
+.DS_Store

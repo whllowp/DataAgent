@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dataagent-postgres
+    environment:
+      POSTGRES_DB: dataagent
+      POSTGRES_USER: dataagent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dataagent}
+    volumes:
+      - dataagent-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dataagent -d dataagent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  dataagent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dataagent-cloud
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      METADATA_DB_URL: jdbc:postgresql://postgres:5432/dataagent
+      METADATA_DB_USER: dataagent
+      METADATA_DB_PASSWORD: ${POSTGRES_PASSWORD:-dataagent}
+      DATAAGENT_DEMO_ENABLED: "false"
+      DATAAGENT_API_TOKEN: ${DATAAGENT_API_TOKEN:-dataagent-dev-token}
+      DATAAGENT_SECRET_KEY: ${DATAAGENT_SECRET_KEY:-dataagent-dev-secret-change-me}
+      DATAAGENT_CORS_ORIGINS: ${DATAAGENT_CORS_ORIGINS:-http://127.0.0.1:49224,http://localhost:49224}
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  dataagent-pg:

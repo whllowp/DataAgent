@@ -1,0 +1,13 @@
+{
+  "name": "dataagent-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Zero-dependency MCP stdio bridge for the DataAgent cloud API",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}

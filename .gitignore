@@ -1,0 +1,21 @@
+# builds / generated frontend bundles
+backend/target/
+backend/src/main/resources/static/studio/
+dsh-plugin/client.js
+studio/node_modules/
+studio/dsh-entry.bundle.cjs
+
+# runtime data
+backend/data/
+*.log
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# local secrets
+.env
+.env.*
+!.env.example

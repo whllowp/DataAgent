@@ -1,0 +1,18 @@
+# DataAgent bundle for the desktop profile.
+# The MCP row points at this workspace; edit the absolute path if the repository moves.
+- insert:
+    - id: dataagent-sql-studio
+      name: '@local/dataagent-dsh'
+      config: {}
+    - id: dataagent-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: dataagent
+        transport: stdio
+        command: node
+        args:
+          - E:/DataAgent/dataagent/mcp-server/server.js
+        env:
+          DATAAGENT_URL: http://127.0.0.1:8080
+          DATAAGENT_TOKEN: dataagent-dev-token
+        failOnStartupError: false
