@@ -58,6 +58,8 @@ public class OpsService {
                 .filter(Objects::nonNull)
                 .max(Comparator.naturalOrder())
                 .orElse(null);
+        Instant nextBenchmarkRun = lastBenchmarkRun == null ? null
+                : lastBenchmarkRun.plusMillis(properties.getBenchmark().getSyncIntervalMs());
         long failedLastRun = benchmarkCases.stream()
                 .filter(item -> "ERROR".equalsIgnoreCase(item.getLastStatus()))
                 .count();
@@ -104,6 +106,8 @@ public class OpsService {
                 new OpsDtos.BenchmarkStat(benchmarkCases.size(),
                         benchmarkCases.stream().filter(item -> "ACTIVE".equalsIgnoreCase(item.getStatus())).count(),
                         failedLastRun, slowLastRun, lastBenchmarkRun),
+                nextBenchmarkRun,
+                properties.getBenchmark().getSyncIntervalMs(),
                 recentErrors,
                 "/actuator/prometheus"
         );

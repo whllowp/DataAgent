@@ -2082,7 +2082,7 @@ function OpsModal({ data, loading, error, runningBenchmarks, onRefresh, onRunBen
             <div className="da-ops-card"><span>慢查询</span><strong>{data.slowQueries}</strong><small>阈值以上</small></div>
             <div className="da-ops-card"><span>JVM 堆</span><strong>{formatBytes(data.heapUsedBytes)}</strong><small>最大 {formatBytes(data.heapMaxBytes)} · {data.threadCount} 线程</small></div>
             <div className="da-ops-card"><span>数据源</span><strong>{data.datasourceCount}</strong><small>{data.pools?.length || 0} 个连接池</small></div>
-            <div className="da-ops-card"><span>SRE 基准</span><strong>{data.benchmarks?.active ?? 0}/{data.benchmarks?.total ?? 0}</strong><small>失败 {data.benchmarks?.failedLastRun ?? 0} · 慢 {data.benchmarks?.slowLastRun ?? 0}</small></div>
+            <div className="da-ops-card"><span>SRE 基准</span><strong>{data.benchmarks?.active ?? 0}/{data.benchmarks?.total ?? 0}</strong><small>失败 {data.benchmarks?.failedLastRun ?? 0} · 慢 {data.benchmarks?.slowLastRun ?? 0} · 下次 {data.nextScheduledBenchmark ? formatTime(data.nextScheduledBenchmark) : '待运行'}</small></div>
           </div>
 
           <div className="da-kb-section-label">连接池</div>

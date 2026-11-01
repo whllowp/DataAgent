@@ -58,6 +58,8 @@ public final class OpsDtos {
             Instant nextScheduledSync,
             long semanticSyncIntervalMs,
             BenchmarkStat benchmarks,
+            Instant nextScheduledBenchmark,
+            long benchmarkIntervalMs,
             List<ErrorRow> recentErrors,
             String prometheusPath
     ) {

@@ -637,6 +637,8 @@ X-User-Id: zhangsan
   "nextScheduledSync": "...",
   "semanticSyncIntervalMs": 1800000,
   "benchmarks": { "total": 3, "active": 3, "failedLastRun": 0, "slowLastRun": 0, "lastRunAt": "..." },
+  "nextScheduledBenchmark": "...",
+  "benchmarkIntervalMs": 3600000,
   "recentErrors": [],
   "prometheusPath": "/actuator/prometheus"
 }
