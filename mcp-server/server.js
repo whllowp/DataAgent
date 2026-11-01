@@ -433,6 +433,19 @@ const tools = [
     },
     handler: (args) => api('/api/semantic/metrics', { method: 'POST', body: args }),
   },
+  {
+    name: 'dataagent_ops_overview',
+    description: '获取运维可观测概览：查询耗时/失败/慢查询、连接池、JVM、语义同步调度和 SRE 基准状态。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    handler: () => api('/api/ops/overview'),
+  },
+  {
+    name: 'dataagent_run_sre_benchmarks',
+    description: '运行全部 ACTIVE 的 SRE SQL 基准用例，返回成功/失败数量；只读执行并自动更新基准状态。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    handler: () => api('/api/benchmarks/run', { method: 'POST' }),
+  },
 ];
 
 async function firstDatasourceId() {

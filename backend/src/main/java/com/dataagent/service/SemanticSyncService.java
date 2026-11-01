@@ -15,10 +15,14 @@ import com.dataagent.repository.SemanticSyncRunRepository;
 import com.dataagent.repository.SemanticTermRepository;
 import com.dataagent.repository.SqlAssetRepository;
 import com.dataagent.web.dto.SemanticDtos;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -46,11 +50,12 @@ public class SemanticSyncService {
     private final SemanticSyncRunRepository runs;
     private final KnowledgeEntryRepository knowledge;
     private final SqlAssetRepository assets;
+    private final MeterRegistry meterRegistry;
 
     public SemanticSyncService(SemanticEntityRepository entities, SemanticMetricRepository metrics,
                                SemanticTermRepository terms, SemanticLinkRepository links,
                                SemanticSyncRunRepository runs, KnowledgeEntryRepository knowledge,
-                               SqlAssetRepository assets) {
+                               SqlAssetRepository assets, MeterRegistry meterRegistry) {
         this.entities = entities;
         this.metrics = metrics;
         this.terms = terms;
@@ -58,6 +63,7 @@ public class SemanticSyncService {
         this.runs = runs;
         this.knowledge = knowledge;
         this.assets = assets;
+        this.meterRegistry = meterRegistry;
     }
 
     /**
@@ -65,6 +71,7 @@ public class SemanticSyncService {
      * curated knowledge entries and cached SQL assets. MANUAL links are never touched.
      */
     public SemanticDtos.SyncRunView sync(String triggerType) {
+        long startedAt = System.currentTimeMillis();
         SemanticSyncRun run = new SemanticSyncRun();
         run.setTriggerType(triggerType == null ? "MANUAL" : triggerType);
         run.setStatus("RUNNING");
@@ -142,6 +149,7 @@ public class SemanticSyncService {
             runs.save(run);
             log.info("Semantic sync {}: assets={}, knowledge={}, created={}, updated={}, removed={}",
                     run.getId(), sqlAssets.size(), knowledgeEntries.size(), created, updated, stale.size());
+            recordSyncMetrics(startedAt, "SUCCESS", created, updated, stale.size());
             return toView(run);
         } catch (Exception e) {
             run.setStatus("FAILED");
@@ -149,7 +157,23 @@ public class SemanticSyncService {
             run.setMessage(e.getMessage());
             runs.save(run);
             log.error("Semantic sync failed: {}", e.getMessage(), e);
+            recordSyncMetrics(startedAt, "FAILED", 0, 0, 0);
             return toView(run);
+        }
+    }
+
+    private void recordSyncMetrics(long startedAt, String status, int created, int updated, int removed) {
+        try {
+            long elapsed = Math.max(0, System.currentTimeMillis() - startedAt);
+            Timer.builder("dataagent.semantic.sync.duration")
+                    .tag("status", status)
+                    .register(meterRegistry)
+                    .record(Duration.ofMillis(elapsed));
+            Counter.builder("dataagent.semantic.sync.links.created").register(meterRegistry).increment(created);
+            Counter.builder("dataagent.semantic.sync.links.updated").register(meterRegistry).increment(updated);
+            Counter.builder("dataagent.semantic.sync.links.removed").register(meterRegistry).increment(removed);
+        } catch (Exception metricError) {
+            log.debug("Failed to record semantic sync metrics", metricError);
         }
     }
 

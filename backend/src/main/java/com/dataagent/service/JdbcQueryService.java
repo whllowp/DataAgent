@@ -10,6 +10,9 @@ import com.dataagent.sql.ResultValueConverter;
 import com.dataagent.sql.SqlGuard;
 import com.dataagent.web.ApiException;
 import com.dataagent.web.dto.SqlDtos;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,6 +23,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,10 +41,12 @@ public class JdbcQueryService {
     private final QueryExecutionRepository executions;
     private final DataAgentProperties properties;
     private final SqlAssetService sqlAssets;
+    private final MeterRegistry meterRegistry;
 
     public JdbcQueryService(DatasourceService datasources, SqlGuard guard, PlanService planService,
                             ResultValueConverter valueConverter, QueryExecutionRepository executions,
-                            DataAgentProperties properties, SqlAssetService sqlAssets) {
+                            DataAgentProperties properties, SqlAssetService sqlAssets,
+                            MeterRegistry meterRegistry) {
         this.datasources = datasources;
         this.guard = guard;
         this.planService = planService;
@@ -48,6 +54,7 @@ public class JdbcQueryService {
         this.executions = executions;
         this.properties = properties;
         this.sqlAssets = sqlAssets;
+        this.meterRegistry = meterRegistry;
     }
 
     public SqlDtos.QueryResult execute(UUID datasourceId, String rawSql, Integer maxRows,
@@ -170,9 +177,27 @@ public class JdbcQueryService {
         if (error != null) {
             log.info("Query {} failed in {} ms: {}", queryId, elapsedMs, error);
         }
-
+        recordMetrics(dialect, status, elapsedMs);
         return new SqlDtos.QueryResult(queryId, status, columns, rows, rows.size(), truncated,
                 elapsedMs, fetchMs, plan, error, executedAt);
+    }
+
+    private void recordMetrics(DbDialect dialect, String status, long elapsedMs) {
+        try {
+            String dialectTag = dialect == null ? "unknown" : dialect.name().toLowerCase();
+            Timer.builder("dataagent.query.duration")
+                    .tag("dialect", dialectTag)
+                    .tag("status", status)
+                    .register(meterRegistry)
+                    .record(Duration.ofMillis(elapsedMs));
+            Counter.builder("dataagent.query.executions")
+                    .tag("dialect", dialectTag)
+                    .tag("status", status)
+                    .register(meterRegistry)
+                    .increment();
+        } catch (Exception metricError) {
+            log.debug("Failed to record query metrics", metricError);
+        }
     }
 
     public SqlDtos.ExplainResult explain(UUID datasourceId, String rawSql, String user) {

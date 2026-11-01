@@ -74,6 +74,10 @@ dataagent:
     sync-enabled: ${DATAAGENT_SEMANTIC_SYNC_ENABLED:true}
     sync-interval-ms: ${DATAAGENT_SEMANTIC_SYNC_INTERVAL_MS:1800000}
     sync-initial-delay-ms: ${DATAAGENT_SEMANTIC_SYNC_INITIAL_DELAY_MS:120000}
+  benchmark:
+    sync-enabled: ${DATAAGENT_BENCHMARK_SYNC_ENABLED:true}
+    sync-interval-ms: ${DATAAGENT_BENCHMARK_SYNC_INTERVAL_MS:3600000}
+    sync-initial-delay-ms: ${DATAAGENT_BENCHMARK_SYNC_INITIAL_DELAY_MS:300000}
 
 logging:
   level:

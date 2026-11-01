@@ -7,6 +7,7 @@ import com.dataagent.domain.QueryExecution;
 import com.dataagent.domain.SemanticEntity;
 import com.dataagent.domain.SemanticMetric;
 import com.dataagent.domain.SemanticTerm;
+import com.dataagent.domain.SqlBenchmarkCase;
 import com.dataagent.repository.DatasourceRepository;
 import com.dataagent.repository.KnowledgeEntryRepository;
 import com.dataagent.repository.QueryExecutionRepository;
@@ -15,6 +16,7 @@ import com.dataagent.repository.SemanticLinkRepository;
 import com.dataagent.repository.SemanticMetricRepository;
 import com.dataagent.repository.SemanticTermRepository;
 import com.dataagent.repository.SqlAssetRepository;
+import com.dataagent.repository.SqlBenchmarkCaseRepository;
 import com.dataagent.service.SemanticSyncService;
 import com.dataagent.service.SqlAssetService;
 import org.slf4j.Logger;
@@ -56,13 +58,15 @@ public class DemoDataInitializer implements ApplicationRunner {
     private final SemanticLinkRepository semanticLinks;
     private final SqlAssetService sqlAssetService;
     private final SemanticSyncService semanticSyncService;
+    private final SqlBenchmarkCaseRepository benchmarks;
 
     public DemoDataInitializer(DataAgentProperties properties, DatasourceRepository datasources,
                                QueryExecutionRepository executions, KnowledgeEntryRepository knowledge,
                                SqlAssetRepository assets, SemanticEntityRepository semanticEntities,
                                SemanticMetricRepository semanticMetrics, SemanticTermRepository semanticTerms,
                                SemanticLinkRepository semanticLinks, SqlAssetService sqlAssetService,
-                               SemanticSyncService semanticSyncService) {
+                               SemanticSyncService semanticSyncService,
+                               SqlBenchmarkCaseRepository benchmarks) {
         this.properties = properties;
         this.datasources = datasources;
         this.executions = executions;
@@ -74,6 +78,7 @@ public class DemoDataInitializer implements ApplicationRunner {
         this.semanticLinks = semanticLinks;
         this.sqlAssetService = sqlAssetService;
         this.semanticSyncService = semanticSyncService;
+        this.benchmarks = benchmarks;
     }
 
     @Override
@@ -97,6 +102,7 @@ public class DemoDataInitializer implements ApplicationRunner {
             }
         }
         seedSemanticLayer();
+        seedBenchmarks(demo);
         if (semanticLinks.count() == 0) {
             semanticSyncService.sync("SEED");
         }
@@ -413,10 +419,104 @@ public class DemoDataInitializer implements ApplicationRunner {
             saveTerm("有效订单", "支付成功且未退款的订单。",
                     "有效订单,支付订单,PAID", entityMap.get("sales_order"), metricMap.get("order_count"), "业务口径,销售");
         }
+        seedOpsSemantics();
         if (!entityMap.isEmpty() || !metricMap.isEmpty()) {
             log.info("Semantic layer ready: entities={}, metrics={}, terms={}",
                     semanticEntities.count(), semanticMetrics.count(), semanticTerms.count());
         }
+    }
+
+    private void seedOpsSemantics() {
+        SemanticEntity service = ensureEntity("ops_service", "服务", "运维",
+                "可观测的服务/应用，关联请求量、错误率、延迟与 SLO。",
+                "OPS_SERVICE_METRICS", "服务,应用,service,app", "运维,可观测");
+        SemanticEntity instance = ensureEntity("ops_instance", "实例", "运维",
+                "服务运行的实例/节点，用于定位单实例异常和容量问题。",
+                "OPS_INSTANCE_METRICS", "实例,节点,instance,host,pod", "运维,可观测");
+        SemanticEntity slo = ensureEntity("ops_slo", "SLO", "运维",
+                "服务等级目标，例如 99.9% 可用性、P95 延迟低于 300ms。",
+                "OPS_SLO", "SLO,服务等级目标,可用性目标", "运维,SRE");
+
+        ensureMetric("availability", "可用性", service,
+                "成功请求数 / 总请求数，按 SLO 时间窗口计算。",
+                "1 - error_count / request_count", "日期,服务,实例,集群",
+                "可用性,availability,成功率", "运维,SRE,黄金指标");
+        ensureMetric("latency_p95", "P95 延迟", instance,
+                "95% 请求的端到端延迟不超过该值，按服务与实例聚合。",
+                "percentile(latency_ms, 0.95)", "日期,服务,实例,接口",
+                "P95,延迟,latency,响应时间", "运维,SRE,黄金指标");
+        ensureMetric("error_rate", "错误率", service,
+                "失败请求数 / 总请求数，需区分 4xx 与 5xx。",
+                "error_count / request_count", "日期,服务,实例,接口",
+                "错误率,error_rate,失败率", "运维,SRE,黄金指标");
+        ensureMetric("mttr", "平均恢复时间", slo,
+                "故障从告警触发到恢复的平均时长。",
+                "avg(recovered_at - alerted_at)", "日期,服务,故障等级",
+                "MTTR,恢复时间,平均恢复时间", "运维,SRE");
+
+        ensureTerm("SLO", "服务等级目标，例如 99.9% 可用性或 P95 < 300ms；需要明确窗口和统计口径。",
+                "SLO,服务等级目标,可用性目标", slo, null, "运维,SRE");
+        ensureTerm("黄金指标", "延迟、流量、错误、饱和度四类核心可观测指标。",
+                "黄金指标,Four Golden Signals,可观测指标", service, null, "运维,SRE");
+        ensureTerm("错误预算", "在 SLO 窗口内允许的失败比例/时长，用于平衡发布速度与稳定性。",
+                "错误预算,error budget,稳定性预算", slo, null, "运维,SRE");
+        ensureTerm("告警", "基于 SLO、错误率、延迟或饱和度触发的运维通知，需有分级和升级路径。",
+                "告警,alert,报警", service, null, "运维,SRE");
+    }
+
+    private SemanticEntity ensureEntity(String name, String displayName, String domain, String description,
+                                        String physicalTables, String synonyms, String tags) {
+        return semanticEntities.findByNameIgnoreCase(name)
+                .orElseGet(() -> saveEntity(name, displayName, domain, description, physicalTables, synonyms, tags));
+    }
+
+    private SemanticMetric ensureMetric(String name, String displayName, SemanticEntity entity,
+                                        String definition, String expression, String dimensions,
+                                        String synonyms, String tags) {
+        return semanticMetrics.findByNameIgnoreCase(name)
+                .orElseGet(() -> saveMetric(name, displayName, entity, definition, expression, dimensions,
+                        synonyms, tags));
+    }
+
+    private void ensureTerm(String termValue, String definition, String synonyms,
+                            SemanticEntity entity, SemanticMetric metric, String tags) {
+        if (semanticTerms.findByTermIgnoreCase(termValue).isEmpty()) {
+            saveTerm(termValue, definition, synonyms, entity, metric, tags);
+        }
+    }
+
+    private void seedBenchmarks(Datasource demo) {
+        if (benchmarks.count() > 0) {
+            return;
+        }
+        saveBenchmark("SRE 基准：客户表健康计数", "运维基准",
+                "SRE 可用性基准：验证只读网关、连接池和 customers 表的健康状态。",
+                "SELECT COUNT(*) FROM customers", demo.getId(), 200L, 1000L,
+                "SRE,availability,benchmark");
+        saveBenchmark("SRE 基准：订单状态分布", "运维基准",
+                "SRE 错误率基准：检查订单状态分布，辅助发现异常流量与数据质量波动。",
+                "SELECT status, COUNT(*) AS orders FROM sales_orders GROUP BY status",
+                demo.getId(), 300L, 1200L, "SRE,error_rate,benchmark");
+        saveBenchmark("SRE 基准：最近订单延迟抽样", "运维基准",
+                "SRE P95 延迟基准：抽样最近订单，验证查询在索引与数据量变化下的延迟。",
+                "SELECT id, amount, order_date FROM sales_orders ORDER BY order_date DESC LIMIT 100",
+                demo.getId(), 150L, 800L, "SRE,latency,benchmark");
+        log.info("Seeded {} SRE benchmark cases", benchmarks.count());
+    }
+
+    private void saveBenchmark(String name, String domain, String description, String sql,
+                               UUID datasourceId, Long baselineMs, Long thresholdMs, String tags) {
+        SqlBenchmarkCase item = new SqlBenchmarkCase();
+        item.setName(name);
+        item.setDomain(domain);
+        item.setDescription(description);
+        item.setSqlText(sql);
+        item.setDatasourceId(datasourceId);
+        item.setBaselineMs(baselineMs);
+        item.setThresholdMs(thresholdMs);
+        item.setTags(tags);
+        item.setStatus("ACTIVE");
+        benchmarks.save(item);
     }
 
     private SemanticEntity saveEntity(String name, String displayName, String domain, String description,

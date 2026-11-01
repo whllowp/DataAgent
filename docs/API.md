@@ -611,7 +611,83 @@ X-User-Id: zhangsan
 }
 ```
 
-## 9. 优化
+## 9. 运维可观测与 SRE 基准
+
+### `GET /api/ops/overview`
+
+```json
+{
+  "status": "UP",
+  "time": "...",
+  "uptimeSeconds": 3600,
+  "queriesToday": 3,
+  "totalQueries": 33,
+  "failedQueries": 0,
+  "averageDurationMs": 123.5,
+  "p95DurationMs": 980,
+  "slowQueries": 2,
+  "datasourceCount": 1,
+  "pools": [
+    { "datasourceId": "...", "name": "Demo 销售库", "dialect": "H2", "active": 0, "idle": 1, "total": 1, "waiting": 0 }
+  ],
+  "heapUsedBytes": 121000000,
+  "heapMaxBytes": 8000000000,
+  "threadCount": 32,
+  "lastSync": { "...": "SyncRunView" },
+  "nextScheduledSync": "...",
+  "semanticSyncIntervalMs": 1800000,
+  "benchmarks": { "total": 3, "active": 3, "failedLastRun": 0, "slowLastRun": 0, "lastRunAt": "..." },
+  "recentErrors": [],
+  "prometheusPath": "/actuator/prometheus"
+}
+```
+
+`status` 为 `UP` / `DEGRADED`；出现基准失败、语义同步失败或连接池等待时降级。
+
+Prometheus 指标：
+
+- `dataagent_query_duration_seconds{dialect,status}`
+- `dataagent_query_executions_total{dialect,status}`
+- `dataagent_semantic_sync_duration_seconds{status}`
+- `dataagent_benchmark_run_duration_seconds{domain,status}`
+
+### `GET /api/benchmarks`
+
+返回 SRE/运维基准 SQL 用例，含最近状态、耗时、阈值。
+
+### `POST /api/benchmarks`
+
+```json
+{
+  "name": "SRE 基准：客户表健康计数",
+  "domain": "运维基准",
+  "description": "验证只读网关、连接池和 customers 表健康状态",
+  "sqlText": "SELECT COUNT(*) FROM customers",
+  "datasourceId": "...",
+  "baselineMs": 200,
+  "thresholdMs": 1000,
+  "tags": "SRE,availability",
+  "status": "ACTIVE"
+}
+```
+
+### `PUT /api/benchmarks/{id}` / `DELETE /api/benchmarks/{id}`
+
+更新 / 删除基准用例。
+
+### `POST /api/benchmarks/{id}/run`
+
+执行单条基准；结果同时进入执行历史和 SQL 资产，供语义同步关联。
+
+### `POST /api/benchmarks/run`
+
+```json
+{ "attempted": 3, "succeeded": 3, "failed": 0 }
+```
+
+定时执行由 `dataagent.benchmark.sync-*` 控制，默认 1 小时；本地可用 `scripts/verify-benchmark-scheduler.ps1` 验证。
+
+## 10. 优化
 
 ### `POST /api/optimize/analyze`
 
@@ -700,7 +776,7 @@ X-User-Id: zhangsan
 { "prompt": "...", "guardrails": ["..."] }
 ```
 
-## 10. 错误码
+## 11. 错误码
 
 | HTTP | code | 说明 |
 | --- | --- | --- |
@@ -711,7 +787,7 @@ X-User-Id: zhangsan
 | 502 | `UPSTREAM_ERROR` | 上游/数据库错误（部分场景返回 200 + status=ERROR） |
 | 500 | `INTERNAL_ERROR` | 未预期异常 |
 
-## 11. curl 速查
+## 12. curl 速查
 
 ```bash
 TOKEN=dataagent-dev-token
@@ -740,4 +816,12 @@ curl -s -X POST "$BASE/api/semantic/design" \
   -d '{"idea":"新增按城市和渠道拆解的 GMV 看板","domain":"销售"}'
 
 curl -s -X POST "$BASE/api/semantic/sync" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/ops/overview" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/benchmarks" -H "X-API-Key: $TOKEN"
+
+curl -s -X POST "$BASE/api/benchmarks/run" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/actuator/prometheus" | grep dataagent_
 ```

@@ -3,7 +3,7 @@
 DataAgent 不 fork DSH，而是交付一个 **bundle**：
 
 - `dsh.client`：向 DSH Web UI 注册 `DataAgent SQL` 主面板和侧边栏入口；
-- `dsh.bundle.patch`：同时插入一个 `@deepseek-ai/dsh-mcp-client` 行，把 19 个工具挂到当前 profile。
+- `dsh.bundle.patch`：同时插入一个 `@deepseek-ai/dsh-mcp-client` 行，把 21 个工具挂到当前 profile。
 
 这样 DSH 升级不会覆盖你的改动，卸载也只需移除 bundle。
 
@@ -156,7 +156,7 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
 ) -join "`n" | node E:\DataAgent\dataagent\mcp-server\server.js
 ```
 
-应看到 `initialize` 与 19 个工具的 JSON 响应。工具调用示例：
+应看到 `initialize` 与 21 个工具的 JSON 响应。工具调用示例：
 
 ```json
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"dataagent_explain_sql","arguments":{"sql":"SELECT * FROM customers LIMIT 5"}}}
@@ -173,6 +173,8 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
 | `dataagent_sync_semantic` | 手动触发语义层 ↔ 知识库同步 |
 | `dataagent_add_semantic_term` | 沉淀业务术语 |
 | `dataagent_add_semantic_metric` | 沉淀指标口径 |
+| `dataagent_ops_overview` | 查询运维可观测概览 |
+| `dataagent_run_sre_benchmarks` | 运行 SRE 基准用例 |
 
 ## 5. 在 DSH 对话中使用
 
@@ -219,6 +221,7 @@ DSH 会自动调用：
 - [ ] “资产”页能看到自动缓存的 SQL 与业务问题。
 - [ ] “语义”页能看到实体/指标/术语，设计助手能生成设计角度与 Prompt。
 - [ ] 点击“同步知识”后关联数量变化，并出现同步记录。
+- [ ] 顶栏「运维可观测」能看到查询 P95、连接池、调度和 SRE 基准状态。
 
 > 本仓库的自动化验证覆盖：Java 测试、Studio 独立页（无头 Chrome 截图 + 交互）、MCP stdio 工具调用、DSH client bundle 的模块加载。  
 > DSH 面板的最终视觉/交互需要在你的 DSH 安装中安装 bundle 后确认；不同 DSH 版本的 Slot 实现可能变化。

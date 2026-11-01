@@ -28,7 +28,7 @@ flowchart TB
     direction TB
     Panel["DataAgent SQL 面板<br/>Schema 树 / 编辑器 / 结果 / 历史 / 知识库"]
     DSH["DSH Agent + 大模型"]
-    MCP["MCP stdio bridge<br/>19 个 dataagent_* 工具"]
+    MCP["MCP stdio bridge<br/>21 个 dataagent_* 工具"]
     Panel -->|"HTTPS / REST"| Gateway
     DSH -->|"tool call"| MCP
     MCP -->|"HTTPS / REST"| Gateway
@@ -265,6 +265,30 @@ EXPLAIN <sql>
 > 详细设计与治理建议见 [SEMANTIC.md](SEMANTIC.md)。  
 > 内置演示定义为 `owner=demo`、`status=DRAFT`，正式使用前必须替换为团队确认口径。
 
+### 3.12 运维可观测
+
+`OpsService` / `GET /api/ops/overview` 聚合：
+
+- 查询侧：今日/总查询、失败数、平均/P95、慢查询、最近失败 SQL；
+- 连接池：每个数据源的 active/idle/total/waiting；
+- JVM：堆使用/最大、线程数、进程 uptime；
+- 调度侧：最近语义同步、下一次预计、链路增删数量；
+- SRE 基准：总数、ACTIVE、最近失败/慢用例、最近运行时间；
+- Prometheus：`/actuator/prometheus`，并记录查询、语义同步、基准执行的 Timer/Counter。
+
+前端 header 的「运维可观测」弹窗每 5s 轮询该接口，状态为 `UP` / `DEGRADED`。
+
+### 3.13 SRE 基准数据集
+
+`sql_benchmark_case` 保存 SRE/运维 SQL 基准用例：
+
+- 字段：名称、业务域、描述、SQL、数据源、baseline/threshold、标签、状态；
+- 最近结果：`last_run_at / last_duration_ms / last_status / last_error`；
+- 手动 `POST /api/benchmarks/{id}/run` 或 `POST /api/benchmarks/run`；
+- `BenchmarkScheduler` 默认每 1 小时执行 ACTIVE 用例，启动 5 分钟后首次；
+- 基准执行复用只读 SQL 网关，因此自动写入执行历史和 SQL 资产，下一轮语义同步可关联到 SRE 实体/指标/术语；
+- 内置 3 条演示基准（可用性、错误率、P95 延迟），`owner=demo` 的语义定义仍为 DRAFT。
+
 ## 4. 数据模型
 
 ```mermaid
@@ -351,6 +375,10 @@ V2 新增：
 - `semantic_entity` / `semantic_metric` / `semantic_term`：语义层实体、指标、术语。
 - `semantic_link`：知识/资产与语义对象的关联，含置信度、原因、AUTO/MANUAL。
 - `semantic_sync_run`：定期互通的审计记录。
+
+V4 新增：
+
+- `sql_benchmark_case`：SRE/运维基准 SQL 用例、阈值和最近执行结果。
 
 ## 5. 关键流程
 
@@ -506,6 +534,8 @@ dsh-plugin/
 | `dataagent_sync_semantic` | 手动同步语义层 |
 | `dataagent_add_semantic_term` | 沉淀术语 |
 | `dataagent_add_semantic_metric` | 沉淀指标 |
+| `dataagent_ops_overview` | 运维可观测概览 |
+| `dataagent_run_sre_benchmarks` | 运行 SRE 基准 |
 
 所有工具最终受云端的只读网关约束；模型不能通过 MCP 绕过 `SqlGuard`。
 

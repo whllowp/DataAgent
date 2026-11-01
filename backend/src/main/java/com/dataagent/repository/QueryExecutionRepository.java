@@ -37,6 +37,10 @@ public interface QueryExecutionRepository extends JpaRepository<QueryExecution, 
 
     long countBySolvedTrue();
 
+    long countByStatus(String status);
+
+    List<QueryExecution> findTop10ByStatusOrderByCreatedAtDesc(String status);
+
     @Query("select avg(q.durationMs) from QueryExecution q where q.status = 'SUCCESS'")
     Double averageDuration();
 

@@ -7,8 +7,10 @@ import com.dataagent.repository.DatasourceRepository;
 import com.dataagent.security.SecretCipher;
 import com.dataagent.web.ApiException;
 import com.dataagent.web.dto.DatasourceDtos;
+import com.dataagent.web.dto.OpsDtos;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import com.zaxxer.hikari.HikariPoolMXBean;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -152,6 +154,21 @@ public class DatasourceService {
             log.info("Creating JDBC pool for datasource {} ({})", datasource.getName(), id);
             return buildPool(datasource, 5);
         });
+    }
+
+    public List<OpsDtos.PoolStat> poolStats() {
+        return repository.findAll().stream().map(datasource -> {
+            HikariDataSource pool = pools.get(datasource.getId());
+            HikariPoolMXBean mx = pool == null ? null : pool.getHikariPoolMXBean();
+            return new OpsDtos.PoolStat(
+                    datasource.getId(),
+                    datasource.getName(),
+                    datasource.getDialect(),
+                    mx == null ? 0 : mx.getActiveConnections(),
+                    mx == null ? 0 : mx.getIdleConnections(),
+                    mx == null ? 0 : mx.getTotalConnections(),
+                    mx == null ? 0 : mx.getThreadsAwaitingConnection());
+        }).toList();
     }
 
     public String passwordOf(Datasource datasource) {

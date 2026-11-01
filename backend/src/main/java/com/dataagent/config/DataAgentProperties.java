@@ -12,6 +12,7 @@ public class DataAgentProperties {
     private final Demo demo = new Demo();
     private final Query query = new Query();
     private final Semantic semantic = new Semantic();
+    private final Benchmark benchmark = new Benchmark();
 
     public Security getSecurity() {
         return security;
@@ -31,6 +32,10 @@ public class DataAgentProperties {
 
     public Semantic getSemantic() {
         return semantic;
+    }
+
+    public Benchmark getBenchmark() {
+        return benchmark;
     }
 
     public static class Security {
@@ -155,6 +160,8 @@ public class DataAgentProperties {
 
     public static class Semantic {
         private boolean syncEnabled = true;
+        private long syncIntervalMs = 1_800_000;
+        private long syncInitialDelayMs = 120_000;
 
         public boolean isSyncEnabled() {
             return syncEnabled;
@@ -162,6 +169,52 @@ public class DataAgentProperties {
 
         public void setSyncEnabled(boolean syncEnabled) {
             this.syncEnabled = syncEnabled;
+        }
+
+        public long getSyncIntervalMs() {
+            return syncIntervalMs;
+        }
+
+        public void setSyncIntervalMs(long syncIntervalMs) {
+            this.syncIntervalMs = syncIntervalMs;
+        }
+
+        public long getSyncInitialDelayMs() {
+            return syncInitialDelayMs;
+        }
+
+        public void setSyncInitialDelayMs(long syncInitialDelayMs) {
+            this.syncInitialDelayMs = syncInitialDelayMs;
+        }
+    }
+
+    public static class Benchmark {
+        private boolean syncEnabled = true;
+        private long syncIntervalMs = 3_600_000;
+        private long syncInitialDelayMs = 300_000;
+
+        public boolean isSyncEnabled() {
+            return syncEnabled;
+        }
+
+        public void setSyncEnabled(boolean syncEnabled) {
+            this.syncEnabled = syncEnabled;
+        }
+
+        public long getSyncIntervalMs() {
+            return syncIntervalMs;
+        }
+
+        public void setSyncIntervalMs(long syncIntervalMs) {
+            this.syncIntervalMs = syncIntervalMs;
+        }
+
+        public long getSyncInitialDelayMs() {
+            return syncInitialDelayMs;
+        }
+
+        public void setSyncInitialDelayMs(long syncInitialDelayMs) {
+            this.syncInitialDelayMs = syncInitialDelayMs;
         }
     }
 }

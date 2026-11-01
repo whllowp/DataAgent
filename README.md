@@ -24,6 +24,8 @@
    - **SQL 资产缓存**：按指纹聚合开发历史 SQL、业务问题、执行次数、平均耗时、最近计划、关联知识
    - **语义层**：实体、指标、术语、同义词、物理表、业务定义，以及知识/资产关联
    - **定期互通**：语义层与知识库、SQL 资产定时同步，也可手动触发
+   - **运维可观测**：查询耗时/失败/慢查询、连接池、JVM、语义同步与 SRE 基准状态；Prometheus 指标 `/actuator/prometheus`
+   - **SRE 基准数据集**：只读基准 SQL 用例，支持手动/定时执行，结果进入 SQL 资产并参与语义关联
    - 优化分析：SQL 反模式规则 + 计划洞察 + DSH Prompt 生成
    - 基准对比：原 SQL vs 候选 SQL，记录计划和耗时实验
 
@@ -36,7 +38,7 @@
    - 同一个 React 组件也构建为独立页面：`http://127.0.0.1:8080/studio/`
 
 3. **DSH 大模型 + MCP 工具**
-   - **19 个 `dataagent_*` MCP 工具**：列数据源、看表结构、只读执行、取计划、分析、对比、搜知识库、保存知识、标记解决、查历史、看统计，以及 SQL 资产、语义上下文、设计助手、语义沉淀、手动同步
+   - **21 个 `dataagent_*` MCP 工具**：列数据源、看表结构、只读执行、取计划、分析、对比、搜知识库、保存知识、标记解决、查历史、看统计，以及 SQL 资产、语义上下文、设计助手、语义沉淀、手动同步、运维概览、SRE 基准
    - 面板生成包含 SQL、真实计划、静态发现和约束的 Prompt
    - 模型可继续调用工具验证，而不是凭空给建议
    - 验证后的结论可回写知识库与语义层
@@ -44,6 +46,8 @@
 ![AI 优化与执行计划](docs/images/studio-optimize.png)
 
 ![语义层与新特性设计助手](docs/images/semantic-layer.png)
+
+![运维可观测与 SRE 基准](docs/images/ops-overview.png)
 
 ## 架构
 
@@ -183,12 +187,12 @@ dataagent/
 │  │  ├─ sql/                SQL 守卫、计划解析、规则分析
 │  │  └─ web/                REST 控制器 + DTO
 │  └─ src/main/resources/
-│     ├─ db/migration/       Flyway（V1 执行/知识、V2 SQL 资产 + 语义层）
+│     ├─ db/migration/       Flyway（V1 执行/知识、V2 资产+语义层、V3 DRAFT、V4 SRE 基准）
 │     ├─ static/studio/      构建生成，不入库
 │     └─ application.yml
 ├─ studio/                   React + esbuild 源码（独立页 + DSH Client）
 ├─ dsh-plugin/               DSH bundle（client.js 构建生成；patch/icon/locale 入库）
-├─ mcp-server/              零依赖 MCP stdio 工具桥（19 个工具）
+├─ mcp-server/              零依赖 MCP stdio 工具桥（21 个工具）
 ├─ docs/                     架构、API、语义层、DSH 集成
 ├─ scripts/                  构建、运行、冒烟
 ├─ docker-compose.yml
@@ -211,6 +215,9 @@ dataagent/
 | `DATAAGENT_SEMANTIC_SYNC_ENABLED` | `true` | 是否启用语义层 ↔ 知识库定期同步 |
 | `DATAAGENT_SEMANTIC_SYNC_INTERVAL_MS` | `1800000` | 同步间隔，默认 30 分钟 |
 | `DATAAGENT_SEMANTIC_SYNC_INITIAL_DELAY_MS` | `120000` | 启动后首次同步延迟 |
+| `DATAAGENT_BENCHMARK_SYNC_ENABLED` | `true` | 是否定时运行 ACTIVE 的 SRE 基准用例 |
+| `DATAAGENT_BENCHMARK_SYNC_INTERVAL_MS` | `3600000` | 基准执行间隔，默认 1 小时 |
+| `DATAAGENT_BENCHMARK_SYNC_INITIAL_DELAY_MS` | `300000` | 启动后首次基准执行延迟 |
 
 生产切换 PostgreSQL：
 
@@ -238,7 +245,7 @@ java -jar backend/target/dataagent-cloud-0.1.0.jar
 ## 开发与测试
 
 ```powershell
-# 后端单元 + 集成测试（23 个）
+# 后端单元 + 集成测试（24 个）
 cd backend
 mvn test
 
@@ -257,24 +264,26 @@ backend/src/main/resources/static/studio/app.js
 dsh-plugin/client.js
 ```
 
-测试覆盖：SQL 守卫、静态规则、计划解析（PostgreSQL/MySQL/H2）、真实 H2 查询、执行计划、知识沉淀、SQL 资产缓存、语义上下文/设计、定期同步幂等、API Token。
+测试覆盖：SQL 守卫、静态规则、计划解析（PostgreSQL/MySQL/H2）、真实 H2 查询、执行计划、知识沉淀、SQL 资产缓存、语义上下文/设计、定期同步幂等、运维概览、SRE 基准执行、API Token。
 
 定期同步可用临时端口验证，不需要等 30 分钟：
 
 ```powershell
 .\scripts\verify-semantic-scheduler.ps1
+.\scripts\verify-benchmark-scheduler.ps1
 ```
 
-它会用 1 秒初始延迟 / 1.5 秒间隔启动临时实例，确认 `SCHEDULED` 同步记录出现后自动停止。
+前者验证语义同步 `SCHEDULED` 记录；后者用临时实例验证 SRE 基准用例按调度执行并更新 `lastRunAt`。
 
 ## Roadmap
 
 | 阶段 | 内容 |
 | --- | --- |
-| MVP（当前） | 只读网关、历史、计划、规则优化、知识库、DSH 面板、MCP、SQL 资产缓存、语义层、定期同步 |
+| MVP（当前） | 只读网关、历史、计划、规则优化、知识库、DSH 面板、MCP、SQL 资产缓存、语义层、定期同步、运维可观测、SRE 基准 |
 | 下一步 | 数据源级 RBAC、OIDC、SQL 结果脱敏、查询取消、SSE 流式结果 |
 | 知识库 2.0 | pgvector 语义检索、LLM 自动摘要/去重、按团队/业务域分层，替换关键词匹配 |
 | 语义层 2.0 | 指标版本化、指标影响分析、人工审核 AUTO 关联、与 openLine 字段级血缘结合 |
+| 运维 2.0 | 接入 Prometheus/日志/追踪、真实 SLO 数据源、基准趋势与告警闭环 |
 | 血缘增强 | 复用同工作区 `openLine` 的字段级血缘：把表/列影响面加入优化上下文，展示“改这条 SQL 会影响哪些下游字段” |
 | 客户端增强 | 虚拟化结果网格、多结果集、事务/写入审批、ER 图、DDL 导出 |
 | 生产化 | K8s、连接池隔离、限流、审计、Prometheus/Grafana、灰度 |

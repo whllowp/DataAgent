@@ -9,12 +9,16 @@ import com.dataagent.repository.QueryExecutionRepository;
 import com.dataagent.service.HistoryService;
 import com.dataagent.service.JdbcQueryService;
 import com.dataagent.service.OptimizationService;
+import com.dataagent.service.OpsService;
+import com.dataagent.service.BenchmarkService;
 import com.dataagent.service.SemanticService;
 import com.dataagent.service.SemanticSyncService;
 import com.dataagent.service.SqlAssetService;
 import com.dataagent.web.ApiException;
+import com.dataagent.web.dto.BenchmarkDtos;
 import com.dataagent.web.dto.HistoryDtos;
 import com.dataagent.web.dto.OptimizeDtos;
+import com.dataagent.web.dto.OpsDtos;
 import com.dataagent.web.dto.SemanticDtos;
 import com.dataagent.web.dto.SqlAssetDtos;
 import com.dataagent.web.dto.SqlDtos;
@@ -64,6 +68,10 @@ class DataAgentIntegrationTest {
     private SemanticService semantic;
     @Autowired
     private SemanticSyncService semanticSync;
+    @Autowired
+    private OpsService ops;
+    @Autowired
+    private BenchmarkService benchmarks;
     @Autowired
     private MockMvc mockMvc;
 
@@ -161,6 +169,21 @@ class DataAgentIntegrationTest {
         SemanticDtos.SyncRunView second = semanticSync.sync("TEST");
         assertEquals("SUCCESS", second.status());
         assertEquals(firstCount, semantic.overview().links());
+    }
+
+    @Test
+    void opsOverviewAndSreBenchmarksAreAvailable() {
+        OpsDtos.OpsOverview overview = ops.overview();
+        assertNotNull(overview.status());
+        assertTrue(overview.benchmarks().total() >= 3);
+        assertFalse(overview.pools().isEmpty());
+
+        BenchmarkDtos.RunAllResult run = benchmarks.runAll();
+        assertTrue(run.attempted() >= 3);
+        assertEquals(0, run.failed());
+        OpsDtos.OpsOverview after = ops.overview();
+        assertTrue(after.benchmarks().failedLastRun() == 0);
+        assertNotNull(after.prometheusPath());
     }
 
     @Test

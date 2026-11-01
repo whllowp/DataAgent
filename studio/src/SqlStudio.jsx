@@ -45,6 +45,23 @@ function formatBytes(value) {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function formatUptime(seconds) {
+  if (seconds == null) return '—';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function formatInterval(ms) {
+  if (ms == null) return '—';
+  if (ms >= 3600000) return `${(ms / 3600000).toFixed(1)}h`;
+  if (ms >= 60000) return `${(ms / 60000).toFixed(0)}m`;
+  return formatDuration(ms);
+}
+
 function quoteIdent(name) {
   return name && /^[A-Za-z_][A-Za-z0-9_$]*$/.test(name) ? name : `"${String(name || '').replaceAll('"', '""')}"`;
 }
@@ -212,6 +229,11 @@ export function SqlStudio({ embedded = false }) {
   const [token, setToken] = React.useState(() => storageGet('dataagent.token', DEFAULT_TOKEN));
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [connectionOpen, setConnectionOpen] = React.useState(false);
+  const [opsOpen, setOpsOpen] = React.useState(false);
+  const [ops, setOps] = React.useState(null);
+  const [opsLoading, setOpsLoading] = React.useState(false);
+  const [opsError, setOpsError] = React.useState('');
+  const [opsRunningBenchmarks, setOpsRunningBenchmarks] = React.useState(false);
   const api = React.useMemo(() => createApi({ baseUrl: apiBase, token }), [apiBase, token]);
 
   const [datasources, setDatasources] = React.useState([]);
@@ -416,6 +438,39 @@ export function SqlStudio({ embedded = false }) {
       setStats(null);
     }
   }
+
+  async function loadOps() {
+    setOpsLoading(true);
+    setOpsError('');
+    try {
+      setOps(await api.opsOverview());
+    } catch (error) {
+      setOpsError(error.message);
+    } finally {
+      setOpsLoading(false);
+    }
+  }
+
+  async function runAllBenchmarks() {
+    if (opsRunningBenchmarks) return;
+    setOpsRunningBenchmarks(true);
+    try {
+      const result = await api.runAllBenchmarks();
+      showToast(`SRE 基准完成：成功 ${result.succeeded}，失败 ${result.failed}`, result.failed ? 'error' : 'success');
+      await loadOps();
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setOpsRunningBenchmarks(false);
+    }
+  }
+
+  React.useEffect(() => {
+    if (!opsOpen) return undefined;
+    loadOps();
+    const timer = window.setInterval(loadOps, 5000);
+    return () => window.clearInterval(timer);
+  }, [opsOpen, api]);
 
   async function loadHistory(query = historyQuery) {
     setHistoryLoading(true);
@@ -855,6 +910,9 @@ export function SqlStudio({ embedded = false }) {
           >
             <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={15} />
           </button>
+          <button className="da-icon-btn" onClick={() => setOpsOpen(true)} title="运维可观测 / SRE 基准">
+            <Icon name="chart" size={15} />
+          </button>
           <button className="da-icon-btn" onClick={() => setSettingsOpen(true)} title="设置">
             <Icon name="settings" size={15} />
           </button>
@@ -1228,6 +1286,18 @@ export function SqlStudio({ embedded = false }) {
           sql={activeTab?.sql || ''}
           onClose={() => setSaveAssetOpen(false)}
           onSubmit={saveCurrentSqlAsset}
+        />
+      ) : null}
+
+      {opsOpen ? (
+        <OpsModal
+          data={ops}
+          loading={opsLoading}
+          error={opsError}
+          runningBenchmarks={opsRunningBenchmarks}
+          onRefresh={loadOps}
+          onRunBenchmarks={runAllBenchmarks}
+          onClose={() => setOpsOpen(false)}
         />
       ) : null}
 
@@ -1963,6 +2033,101 @@ function SaveAssetModal({ sql, onClose, onSubmit }) {
         <label className="da-label">SQL</label>
         <textarea className="da-textarea" value={form.sql} onChange={(event) => update('sql', event.target.value)} style={{ minHeight: 140 }} />
       </div>
+    </Modal>
+  );
+}
+
+function OpsModal({ data, loading, error, runningBenchmarks, onRefresh, onRunBenchmarks, onClose }) {
+  const status = data?.status || 'LOADING';
+  return (
+    <Modal
+      title="运维可观测 / SRE 基准"
+      onClose={onClose}
+      wide
+      footer={(
+        <>
+          <a className="da-btn ghost" href={data?.prometheusPath || '/actuator/prometheus'} target="_blank" rel="noreferrer">
+            <Icon name="external" size={11} /> Prometheus
+          </a>
+          <button className="da-btn ghost" onClick={onRefresh} disabled={loading}>
+            <Icon name={loading ? 'refresh' : 'chart'} size={11} className={loading ? 'da-spin' : ''} /> 刷新
+          </button>
+          <button className="da-btn primary" onClick={onRunBenchmarks} disabled={runningBenchmarks}>
+            <Icon name={runningBenchmarks ? 'refresh' : 'play'} size={11} className={runningBenchmarks ? 'da-spin' : ''} />
+            运行全部 SRE 基准
+          </button>
+        </>
+      )}
+    >
+      {error ? <div className="da-error-box">{error}</div> : null}
+      {!data ? (
+        <div className="da-tree-empty"><Icon name="refresh" size={14} className="da-spin" /> 正在读取云端运行指标…</div>
+      ) : (
+        <>
+          <div className="da-ops-hero">
+            <div>
+              <span className={`da-status ${status === 'UP' ? 'ok' : 'warn'}`}>{status}</span>
+              <div className="da-ops-title">DataAgent Cloud</div>
+              <div className="da-muted">运行 {formatUptime(data.uptimeSeconds)} · 更新于 {formatTime(data.time)}</div>
+            </div>
+            <div className="da-ops-hero-right">
+              <strong>{data.queriesToday}</strong>
+              <span>今日查询</span>
+            </div>
+          </div>
+
+          <div className="da-ops-grid">
+            <div className="da-ops-card"><span>平均耗时</span><strong>{formatDuration(Math.round(data.averageDurationMs))}</strong><small>P95 {formatDuration(data.p95DurationMs)}</small></div>
+            <div className="da-ops-card"><span>失败查询</span><strong>{data.failedQueries}</strong><small>总计 {data.totalQueries} 次</small></div>
+            <div className="da-ops-card"><span>慢查询</span><strong>{data.slowQueries}</strong><small>阈值以上</small></div>
+            <div className="da-ops-card"><span>JVM 堆</span><strong>{formatBytes(data.heapUsedBytes)}</strong><small>最大 {formatBytes(data.heapMaxBytes)} · {data.threadCount} 线程</small></div>
+            <div className="da-ops-card"><span>数据源</span><strong>{data.datasourceCount}</strong><small>{data.pools?.length || 0} 个连接池</small></div>
+            <div className="da-ops-card"><span>SRE 基准</span><strong>{data.benchmarks?.active ?? 0}/{data.benchmarks?.total ?? 0}</strong><small>失败 {data.benchmarks?.failedLastRun ?? 0} · 慢 {data.benchmarks?.slowLastRun ?? 0}</small></div>
+          </div>
+
+          <div className="da-kb-section-label">连接池</div>
+          {(data.pools || []).length ? (
+            <div className="da-ops-table">
+              {(data.pools || []).map((pool) => (
+                <div className="da-ops-row" key={pool.datasourceId}>
+                  <span>{pool.name}<small>{pool.dialect}</small></span>
+                  <span>active {pool.active}</span>
+                  <span>idle {pool.idle}</span>
+                  <span>total {pool.total}</span>
+                  <span className={pool.waiting > 0 ? 'da-ops-warn' : ''}>waiting {pool.waiting}</span>
+                </div>
+              ))}
+            </div>
+          ) : <div className="da-hint">暂无已创建的连接池。</div>}
+
+          <div className="da-kb-section-label">语义同步调度</div>
+          <div className="da-ops-sync">
+            <div>
+              <span className={`da-status ${data.lastSync?.status === 'FAILED' ? 'warn' : 'ok'}`}>
+                {data.lastSync?.status || 'NO RUN'}
+              </span>
+              <div>{data.lastSync ? `${data.lastSync.triggerType} · ${formatTime(data.lastSync.startedAt)}` : '尚未执行同步'}</div>
+              <div className="da-muted">
+                间隔 {formatInterval(data.semanticSyncIntervalMs)}
+                {data.nextScheduledSync ? ` · 预计 ${formatTime(data.nextScheduledSync)}` : ''}
+              </div>
+            </div>
+            <div className="da-ops-sync-links">
+              <span>+{data.lastSync?.createdLinks ?? 0}</span>
+              <span>~{data.lastSync?.updatedLinks ?? 0}</span>
+              <span>-{data.lastSync?.removedLinks ?? 0}</span>
+            </div>
+          </div>
+
+          <div className="da-kb-section-label">最近失败查询</div>
+          {(data.recentErrors || []).length ? (data.recentErrors || []).slice(0, 5).map((row) => (
+            <div className="da-ops-error" key={row.queryId}>
+              <div className="da-mono">{row.sqlText}</div>
+              <div>{row.errorMessage || '未知错误'} · {formatDuration(row.durationMs)} · {formatTime(row.createdAt)}</div>
+            </div>
+          )) : <div className="da-hint">没有失败查询记录。</div>}
+        </>
+      )}
     </Modal>
   );
 }
