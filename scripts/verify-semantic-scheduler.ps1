@@ -5,8 +5,11 @@ if (-not (Test-Path $jar)) {
     throw "JAR not found: $jar. Run scripts/build.ps1 first."
 }
 
-$port = if ($env:SCHEDULER_TEST_PORT) { [int]$env:SCHEDULER_TEST_PORT } else { 18080 }
+$port = if ($env:SCHEDULER_TEST_PORT) { [int]$env:SCHEDULER_TEST_PORT } else { 18082 }
 $base = "http://127.0.0.1:$port"
+if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) {
+    throw "Port $port is already in use; set SCHEDULER_TEST_PORT to a free port."
+}
 $token = 'semantic-scheduler-test'
 $old = @{}
 $names = @('SERVER_PORT','METADATA_DB_URL','METADATA_DB_USER','METADATA_DB_PASSWORD','DATAAGENT_API_TOKEN','DATAAGENT_DEMO_ENABLED','DATAAGENT_SEMANTIC_SYNC_ENABLED','DATAAGENT_SEMANTIC_SYNC_INITIAL_DELAY_MS','DATAAGENT_SEMANTIC_SYNC_INTERVAL_MS')

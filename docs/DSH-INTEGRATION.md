@@ -41,6 +41,12 @@ E:\DataAgent\dataagent\dsh-plugin
 5. 如果 DSH 提示重启，重启；支持 HMR 的 profile 会直接加载。
 6. 刷新页面，左侧栏应出现数据库图标 **DataAgent SQL**。
 
+> 本机 `desktop` profile 已安装：`$DSH_HOME\profiles\desktop\package.json` 的 `dsh.profile.bundles` 包含 `@local/dataagent-dsh`；DSH 侧栏已出现 **DataAgent SQL**。如果升级/重装 DSH 后丢失，按上述方式重装。
+>
+> DSH 渲染进程的 Origin 是 `dsh-app://...`；后端默认 CORS 已包含 `dsh-app://*` 和 `http://127.0.0.1:61025`。若面板显示“云服务不可达”，先确认这两项在 `DATAAGENT_CORS_ORIGINS` 中。
+>
+> `dsh plugin --profile desktop` 会被 CLI 拒绝（`profile "desktop" is managed exclusively by the Electron application`），这是 DSH 的保护；不要在应用运行时手改 desktop profile。
+
 > 安装的是本地链接（link），后续修改 `client.js` 后重新构建；若 bundle 已被加载，DSH 可能需要重启才能加载新的 JavaScript generation。
 
 ### 方式 B：命令行（了解即可）

@@ -35,6 +35,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
@@ -192,5 +194,15 @@ class DataAgentIntegrationTest {
         mockMvc.perform(get("/api/datasources").header("X-API-Key", "test-token"))
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/health")).andExpect(status().isOk());
+    }
+
+    @Test
+    void allowsDshDesktopOrigin() throws Exception {
+        mockMvc.perform(options("/api/health")
+                        .header("Origin", "dsh-app://dsh")
+                        .header("Access-Control-Request-Method", "GET")
+                        .header("Access-Control-Request-Headers", "X-API-Key"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "dsh-app://dsh"));
     }
 }

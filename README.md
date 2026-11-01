@@ -206,7 +206,7 @@ dataagent/
 | `SERVER_PORT` | `8080` | 云服务端口 |
 | `DATAAGENT_API_TOKEN` | `dataagent-dev-token` | REST API Token，生产必须改 |
 | `DATAAGENT_SECRET_KEY` | `dataagent-dev-secret-change-me` | 数据源密码 AES-GCM 密钥，生产必须改且持久化 |
-| `DATAAGENT_CORS_ORIGINS` | 本地 49224/5173 | 允许的端侧来源 |
+| `DATAAGENT_CORS_ORIGINS` | 本地 49224/5173、DSH 61025、`dsh-app://*` | 允许的端侧来源 |
 | `DATAAGENT_DEMO_ENABLED` | `true` | 是否创建 H2 演示库 |
 | `METADATA_DB_URL` | H2 file `./data/dataagent` | 元数据库；生产用 PostgreSQL |
 | `METADATA_DB_USER` / `METADATA_DB_PASSWORD` | `sa` / 空 | 元数据库账号 |
@@ -245,7 +245,7 @@ java -jar backend/target/dataagent-cloud-0.1.0.jar
 ## 开发与测试
 
 ```powershell
-# 后端单元 + 集成测试（24 个）
+# 后端单元 + 集成测试（25 个）
 cd backend
 mvn test
 
