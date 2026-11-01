@@ -246,12 +246,26 @@ mvn test
 cd ..\studio
 npm run build
 
+# 重新部署：先构建前端，再打包后端（可选 -RunTests）
+.\scripts\redeploy.ps1 -RunTests
+
+# 启动（会自动检查 UI 构建是否缺失或过期）
+.\scripts\run.ps1
+
 # 仅查看构建产物
 backend/src/main/resources/static/studio/app.js
 dsh-plugin/client.js
 ```
 
 测试覆盖：SQL 守卫、静态规则、计划解析（PostgreSQL/MySQL/H2）、真实 H2 查询、执行计划、知识沉淀、SQL 资产缓存、语义上下文/设计、定期同步幂等、API Token。
+
+定期同步可用临时端口验证，不需要等 30 分钟：
+
+```powershell
+.\scripts\verify-semantic-scheduler.ps1
+```
+
+它会用 1 秒初始延迟 / 1.5 秒间隔启动临时实例，确认 `SCHEDULED` 同步记录出现后自动停止。
 
 ## Roadmap
 
