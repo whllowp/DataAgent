@@ -15,12 +15,15 @@
 | 数据库密码散落在个人电脑 | 密码只存云端，AES-GCM 加密；端侧只拿短期 API Token |
 | 手工复制 SQL 到 AI 对话，AI 看不到真实计划 | DSH 通过 MCP 工具直接取计划、执行只读查询、跑对比、查知识库 |
 
-## 三个核心能力
+## 四个核心能力
 
 1. **云端 Java + Spring Boot**
    - 数据源注册、元数据浏览、只读 SQL 网关
    - 自动采集：SQL、耗时、取数耗时、行数、是否截断、执行计划、错误（Studio 运行默认带计划；云端慢查询自动补计划）
    - 历史检索、问题标注、解决后自动生成知识条目
+   - **SQL 资产缓存**：按指纹聚合开发历史 SQL、业务问题、执行次数、平均耗时、最近计划、关联知识
+   - **语义层**：实体、指标、术语、同义词、物理表、业务定义，以及知识/资产关联
+   - **定期互通**：语义层与知识库、SQL 资产定时同步，也可手动触发
    - 优化分析：SQL 反模式规则 + 计划洞察 + DSH Prompt 生成
    - 基准对比：原 SQL vs 候选 SQL，记录计划和耗时实验
 
@@ -28,17 +31,19 @@
    - DSH Web UI 侧边栏新增 **DataAgent SQL** 面板
    - 对象浏览器：schema / 表 / 列 / 主键 / 索引
    - 多查询页签、SQL 编辑器、Ctrl+Enter 运行、执行计划、结果表格、CSV 导出
-   - 历史与团队知识库检索、一键载入 SQL
-   - 优化结论沉淀表单
+   - 历史、知识库、SQL 资产、语义层与设计助手
+   - 优化结论沉淀表单；SQL 资产手工缓存
    - 同一个 React 组件也构建为独立页面：`http://127.0.0.1:8080/studio/`
 
 3. **DSH 大模型 + MCP 工具**
-   - 12 个 `dataagent_*` MCP 工具：列数据源、看表结构、只读执行、取计划、分析、对比、搜知识库、保存知识、标记解决、查历史、看统计
+   - **19 个 `dataagent_*` MCP 工具**：列数据源、看表结构、只读执行、取计划、分析、对比、搜知识库、保存知识、标记解决、查历史、看统计，以及 SQL 资产、语义上下文、设计助手、语义沉淀、手动同步
    - 面板生成包含 SQL、真实计划、静态发现和约束的 Prompt
    - 模型可继续调用工具验证，而不是凭空给建议
-   - 验证后的结论可回写知识库
+   - 验证后的结论可回写知识库与语义层
 
 ![AI 优化与执行计划](docs/images/studio-optimize.png)
+
+![语义层与新特性设计助手](docs/images/semantic-layer.png)
 
 ## 架构
 
@@ -56,7 +61,10 @@ flowchart LR
     GW["只读 SQL 网关<br/>HikariCP + timeout + maxRows"]
     PLAN["执行计划采集与解析"]
     HIST[("执行历史")]
+    ASSET[("SQL 资产缓存")]
     KB[("团队知识库")]
+    SEM[("语义层")]
+    SYNC["定期互通"]
     OPT["优化规则 + Prompt + 基准对比"]
   end
 
@@ -68,15 +76,21 @@ flowchart LR
   API --> META
   API --> GW
   API --> HIST
+  API --> ASSET
   API --> KB
+  API --> SEM
   API --> OPT
   GW --> DB
   GW --> PLAN
   PLAN --> HIST
+  HIST --> ASSET
   HIST -->|"标记解决"| KB
+  ASSET --> SYNC
+  KB --> SYNC
+  SEM --> SYNC
 ```
 
-更完整的设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，接口见 [docs/API.md](docs/API.md)，DSH 集成见 [docs/DSH-INTEGRATION.md](docs/DSH-INTEGRATION.md)。
+更完整的设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，语义层见 [docs/SEMANTIC.md](docs/SEMANTIC.md)，接口见 [docs/API.md](docs/API.md)，DSH 集成见 [docs/DSH-INTEGRATION.md](docs/DSH-INTEGRATION.md)。
 
 ## 快速开始（本地 H2 演示库）
 
@@ -163,17 +177,17 @@ dataagent/
 │  │  ├─ domain/             实体 + 方言
 │  │  ├─ repository/         JPA
 │  │  ├─ security/           API Token、AES-GCM
-│  │  ├─ service/            数据源、元数据、执行、历史、知识库、优化
+│  │  ├─ service/            数据源、执行、历史、知识库、SQL 资产、语义层、同步、优化
 │  │  ├─ sql/                SQL 守卫、计划解析、规则分析
 │  │  └─ web/                REST 控制器 + DTO
 │  └─ src/main/resources/
-│     ├─ db/migration/       Flyway
+│     ├─ db/migration/       Flyway（V1 执行/知识、V2 SQL 资产 + 语义层）
 │     ├─ static/studio/      构建生成，不入库
 │     └─ application.yml
 ├─ studio/                   React + esbuild 源码（独立页 + DSH Client）
 ├─ dsh-plugin/               DSH bundle（client.js 构建生成；patch/icon/locale 入库）
-├─ mcp-server/              零依赖 MCP stdio 工具桥
-├─ docs/                     架构、API、DSH 集成
+├─ mcp-server/              零依赖 MCP stdio 工具桥（19 个工具）
+├─ docs/                     架构、API、语义层、DSH 集成
 ├─ scripts/                  构建、运行、冒烟
 ├─ docker-compose.yml
 └─ README.md
@@ -192,6 +206,9 @@ dataagent/
 | `METADATA_DB_USER` / `METADATA_DB_PASSWORD` | `sa` / 空 | 元数据库账号 |
 | `DATAAGENT_USER` | `dsh-agent` | MCP 工具调用时写入历史的用户标识 |
 | `DATAAGENT_URL` / `DATAAGENT_TOKEN` | `http://127.0.0.1:8080` / dev token | MCP 服务连接云端 |
+| `DATAAGENT_SEMANTIC_SYNC_ENABLED` | `true` | 是否启用语义层 ↔ 知识库定期同步 |
+| `DATAAGENT_SEMANTIC_SYNC_INTERVAL_MS` | `1800000` | 同步间隔，默认 30 分钟 |
+| `DATAAGENT_SEMANTIC_SYNC_INITIAL_DELAY_MS` | `120000` | 启动后首次同步延迟 |
 
 生产切换 PostgreSQL：
 
@@ -220,7 +237,7 @@ java -jar backend/target/dataagent-cloud-0.1.0.jar
 ## 开发与测试
 
 ```powershell
-# 后端单元 + 集成测试（20 个）
+# 后端单元 + 集成测试（23 个）
 cd backend
 mvn test
 
@@ -233,15 +250,16 @@ backend/src/main/resources/static/studio/app.js
 dsh-plugin/client.js
 ```
 
-测试覆盖：SQL 守卫、静态规则、计划解析（PostgreSQL/MySQL/H2）、真实 H2 查询、执行计划、知识沉淀、API Token。
+测试覆盖：SQL 守卫、静态规则、计划解析（PostgreSQL/MySQL/H2）、真实 H2 查询、执行计划、知识沉淀、SQL 资产缓存、语义上下文/设计、定期同步幂等、API Token。
 
 ## Roadmap
 
 | 阶段 | 内容 |
 | --- | --- |
-| MVP（当前） | 只读网关、历史、计划、规则优化、知识库、DSH 面板、MCP |
+| MVP（当前） | 只读网关、历史、计划、规则优化、知识库、DSH 面板、MCP、SQL 资产缓存、语义层、定期同步 |
 | 下一步 | 数据源级 RBAC、OIDC、SQL 结果脱敏、查询取消、SSE 流式结果 |
-| 知识库 2.0 | pgvector 语义检索、LLM 自动摘要/去重、按团队/业务域分层 |
+| 知识库 2.0 | pgvector 语义检索、LLM 自动摘要/去重、按团队/业务域分层，替换关键词匹配 |
+| 语义层 2.0 | 指标版本化、指标影响分析、人工审核 AUTO 关联、与 openLine 字段级血缘结合 |
 | 血缘增强 | 复用同工作区 `openLine` 的字段级血缘：把表/列影响面加入优化上下文，展示“改这条 SQL 会影响哪些下游字段” |
 | 客户端增强 | 虚拟化结果网格、多结果集、事务/写入审批、ER 图、DDL 导出 |
 | 生产化 | K8s、连接池隔离、限流、审计、Prometheus/Grafana、灰度 |

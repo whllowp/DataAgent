@@ -11,6 +11,7 @@ public class DataAgentProperties {
     private final Cors cors = new Cors();
     private final Demo demo = new Demo();
     private final Query query = new Query();
+    private final Semantic semantic = new Semantic();
 
     public Security getSecurity() {
         return security;
@@ -26,6 +27,10 @@ public class DataAgentProperties {
 
     public Query getQuery() {
         return query;
+    }
+
+    public Semantic getSemantic() {
+        return semantic;
     }
 
     public static class Security {
@@ -145,6 +150,18 @@ public class DataAgentProperties {
 
         public void setAutoPlanThresholdMs(long autoPlanThresholdMs) {
             this.autoPlanThresholdMs = autoPlanThresholdMs;
+        }
+    }
+
+    public static class Semantic {
+        private boolean syncEnabled = true;
+
+        public boolean isSyncEnabled() {
+            return syncEnabled;
+        }
+
+        public void setSyncEnabled(boolean syncEnabled) {
+            this.syncEnabled = syncEnabled;
         }
     }
 }

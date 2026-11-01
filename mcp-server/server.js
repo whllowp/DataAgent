@@ -321,6 +321,118 @@ const tools = [
     annotations: { readOnlyHint: true },
     handler: () => api('/api/stats/overview'),
   },
+  {
+    name: 'dataagent_search_sql_assets',
+    description: '检索团队 SQL 资产缓存：开发历史 SQL、它解决的业务问题、执行次数与平均耗时。比执行历史更接近“知识资产”。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '业务问题 / SQL / 标签关键词' },
+        domain: { type: 'string', description: '业务域，例如 销售 / 财务' },
+        datasourceId: { type: 'string' },
+        size: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => {
+      const params = new URLSearchParams();
+      if (args.query) params.set('q', args.query);
+      if (args.domain) params.set('domain', args.domain);
+      if (args.datasourceId) params.set('datasourceId', args.datasourceId);
+      params.set('size', String(args.size || 20));
+      return api(`/api/sql-assets?${params.toString()}`);
+    },
+  },
+  {
+    name: 'dataagent_semantic_context',
+    description: '查询业务语义层：匹配实体、指标、术语，并返回关联的团队知识和历史 SQL 资产。写 SQL 或设计新功能前先调用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '业务关键词，例如 GMV 城市 渠道' },
+        domain: { type: 'string', description: '业务域' },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => {
+      const params = new URLSearchParams();
+      if (args.query) params.set('q', args.query);
+      if (args.domain) params.set('domain', args.domain);
+      return api(`/api/semantic/context?${params.toString()}`);
+    },
+  },
+  {
+    name: 'dataagent_suggest_design',
+    description: '基于语义层与知识库为新特性/新业务生成设计思路、待确认问题、风险与可交给 DSH 继续完善的 Prompt。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        idea: { type: 'string', description: '业务想法/需求描述' },
+        domain: { type: 'string' },
+        datasourceId: { type: 'string' },
+      },
+      required: ['idea'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => api('/api/semantic/design', {
+      method: 'POST',
+      body: { idea: args.idea, domain: args.domain, datasourceId: args.datasourceId },
+    }),
+  },
+  {
+    name: 'dataagent_semantic_overview',
+    description: '查看语义层规模、关联数量、最近一次知识库同步记录。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    handler: () => api('/api/semantic/overview'),
+  },
+  {
+    name: 'dataagent_sync_semantic',
+    description: '手动触发语义层与知识库/SQL 资产的互通同步。会重建 AUTO 关联，保留人工关联；应在用户明确要求时调用。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    handler: () => api('/api/semantic/sync', { method: 'POST' }),
+  },
+  {
+    name: 'dataagent_add_semantic_term',
+    description: '沉淀一个业务术语（定义、同义词、标签，可关联实体/指标）。用于把对话中的业务共识写回语义层。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        term: { type: 'string' },
+        definition: { type: 'string' },
+        synonyms: { type: 'string' },
+        relatedEntityId: { type: 'string' },
+        relatedMetricId: { type: 'string' },
+        tags: { type: 'string' },
+      },
+      required: ['term'],
+      additionalProperties: false,
+    },
+    handler: (args) => api('/api/semantic/terms', { method: 'POST', body: args }),
+  },
+  {
+    name: 'dataagent_add_semantic_metric',
+    description: '沉淀一个指标（业务定义、表达式、维度、同义词），让后续 SQL 和新功能复用统一口径。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        displayName: { type: 'string' },
+        entityId: { type: 'string' },
+        businessDefinition: { type: 'string' },
+        expression: { type: 'string' },
+        dimensions: { type: 'string' },
+        synonyms: { type: 'string' },
+        tags: { type: 'string' },
+      },
+      required: ['name', 'displayName'],
+      additionalProperties: false,
+    },
+    handler: (args) => api('/api/semantic/metrics', { method: 'POST', body: args }),
+  },
 ];
 
 async function firstDatasourceId() {

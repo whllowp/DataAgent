@@ -1034,20 +1034,28 @@ body.da-standalone .da-app {
   border-bottom: 1px solid var(--da-border);
   background: var(--da-panel-2);
   flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.da-right-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .da-right-tab {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   height: 38px;
-  padding: 0 10px;
+  padding: 0 6px;
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--da-muted);
-  font-size: 11.5px;
+  font-size: 10.5px;
   font-weight: 550;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .da-right-tab:hover {
@@ -1435,6 +1443,125 @@ body.da-standalone .da-app {
   max-height: 150px;
   overflow: auto;
   white-space: pre-wrap;
+}
+
+.da-sem-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.da-sem-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 8px;
+  border: 1px solid var(--da-border);
+  border-radius: 7px;
+  background: var(--da-panel-2);
+}
+
+.da-sem-stats span {
+  color: var(--da-faint);
+  font-size: 9px;
+}
+
+.da-sem-stats strong {
+  color: var(--da-text);
+  font-size: 14px;
+}
+
+.da-design-box,
+.da-design-result {
+  padding: 10px;
+  margin-bottom: 11px;
+  border: 1px solid var(--da-border);
+  border-radius: 9px;
+  background:
+    radial-gradient(120% 100% at 0% 0%, var(--da-purple-soft), transparent 65%),
+    var(--da-panel-2);
+}
+
+.da-design-result {
+  background: var(--da-panel-2);
+}
+
+.da-design-input {
+  width: 100%;
+  min-height: 64px;
+  margin-top: 8px;
+  padding: 7px 8px;
+  resize: vertical;
+  border: 1px solid var(--da-border);
+  border-radius: 7px;
+  outline: 0;
+  background: var(--da-bg);
+  color: var(--da-text);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.da-design-input:focus {
+  border-color: color-mix(in srgb, var(--da-accent) 55%, transparent);
+  box-shadow: 0 0 0 2px var(--da-accent-soft);
+}
+
+.da-design-line {
+  margin-top: 4px;
+  color: var(--da-text-2);
+  font-size: 10.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.da-design-line.risk {
+  color: var(--da-amber);
+}
+
+.da-design-link {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--da-accent);
+  text-align: left;
+}
+
+.da-design-link:hover {
+  text-decoration: underline;
+}
+
+.da-sem-subtabs {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin: 4px 0 8px;
+  padding: 3px;
+  border: 1px solid var(--da-border);
+  border-radius: 7px;
+  background: var(--da-panel-2);
+}
+
+.da-sem-subtabs button {
+  flex: 1;
+  height: 25px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--da-muted);
+  font-size: 10.5px;
+}
+
+.da-sem-subtabs button.active {
+  background: var(--da-raised);
+  color: var(--da-text);
+}
+
+.da-sem-subtabs button span {
+  color: var(--da-faint);
+  font-size: 9px;
 }
 
 .da-sidebar-footer {

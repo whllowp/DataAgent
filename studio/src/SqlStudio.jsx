@@ -254,6 +254,23 @@ export function SqlStudio({ embedded = false }) {
   const [openKbId, setOpenKbId] = React.useState('');
   const [stats, setStats] = React.useState(null);
 
+  const [sqlAssets, setSqlAssets] = React.useState([]);
+  const [assetsLoading, setAssetsLoading] = React.useState(false);
+  const [assetQuery, setAssetQuery] = React.useState('');
+  const [saveAssetOpen, setSaveAssetOpen] = React.useState(false);
+
+  const [semanticOverview, setSemanticOverview] = React.useState(null);
+  const [semanticEntities, setSemanticEntities] = React.useState([]);
+  const [semanticMetrics, setSemanticMetrics] = React.useState([]);
+  const [semanticTerms, setSemanticTerms] = React.useState([]);
+  const [semanticLoading, setSemanticLoading] = React.useState(false);
+  const [semanticQuery, setSemanticQuery] = React.useState('');
+  const [semanticSubTab, setSemanticSubTab] = React.useState('entities');
+  const [designIdea, setDesignIdea] = React.useState('');
+  const [designResult, setDesignResult] = React.useState(null);
+  const [designing, setDesigning] = React.useState(false);
+  const [semanticSyncing, setSemanticSyncing] = React.useState(false);
+
   const [solveTarget, setSolveTarget] = React.useState(null);
   const [toast, setToast] = React.useState(null);
 
@@ -388,6 +405,8 @@ export function SqlStudio({ embedded = false }) {
   React.useEffect(() => {
     if (rightTab === 'history') loadHistory();
     if (rightTab === 'knowledge') loadKnowledge();
+    if (rightTab === 'assets') loadAssets();
+    if (rightTab === 'semantic') loadSemantic();
   }, [rightTab, rightOpen, api]);
 
   async function loadStats() {
@@ -421,6 +440,91 @@ export function SqlStudio({ embedded = false }) {
       showToast(error.message, 'error');
     } finally {
       setKnowledgeLoading(false);
+    }
+  }
+
+  async function loadAssets(query = assetQuery) {
+    setAssetsLoading(true);
+    try {
+      const payload = await api.sqlAssets({ size: 40, q: query, datasourceId: activeDsId || undefined });
+      setSqlAssets(payload?.items || []);
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setAssetsLoading(false);
+    }
+  }
+
+  async function loadSemantic(query = semanticQuery) {
+    setSemanticLoading(true);
+    try {
+      const [overview, entities, metrics, terms] = await Promise.all([
+        api.semanticOverview(),
+        api.semanticEntities(query),
+        api.semanticMetrics(query),
+        api.semanticTerms(query),
+      ]);
+      setSemanticOverview(overview);
+      setSemanticEntities(entities || []);
+      setSemanticMetrics(metrics || []);
+      setSemanticTerms(terms || []);
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setSemanticLoading(false);
+    }
+  }
+
+  async function runSemanticSync() {
+    if (semanticSyncing) return;
+    setSemanticSyncing(true);
+    try {
+      const run = await api.semanticSync();
+      showToast(run.status === 'SUCCESS'
+        ? `同步完成：新增 ${run.createdLinks}，更新 ${run.updatedLinks}，清理 ${run.removedLinks}`
+        : `同步失败：${run.message || '未知错误'}`, run.status === 'SUCCESS' ? 'success' : 'error');
+      await loadSemantic();
+      await loadStats();
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setSemanticSyncing(false);
+    }
+  }
+
+  async function runSemanticDesign() {
+    if (!designIdea.trim() || designing) return;
+    setDesigning(true);
+    try {
+      const result = await api.semanticDesign({
+        idea: designIdea.trim(),
+        domain: semanticEntities.find((entity) => entity.domain)?.domain || null,
+        datasourceId: activeDsId || null,
+      });
+      setDesignResult(result);
+      showToast('设计思路已生成，可复制 Prompt 交给 DSH 继续完善。', 'success');
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setDesigning(false);
+    }
+  }
+
+  async function saveCurrentSqlAsset(form) {
+    try {
+      await api.saveSqlAsset({
+        sql: form.sql,
+        businessProblem: form.businessProblem,
+        domain: form.domain,
+        tags: form.tags,
+        datasourceId: activeDsId || null,
+      });
+      setSaveAssetOpen(false);
+      showToast('SQL 已缓存到团队资产库。', 'success');
+      await loadAssets();
+      await loadStats();
+    } catch (error) {
+      showToast(error.message, 'error');
     }
   }
 
@@ -978,6 +1082,12 @@ export function SqlStudio({ embedded = false }) {
             <button className={`da-right-tab ${rightTab === 'knowledge' ? 'active' : ''}`} onClick={() => openRight('knowledge')}>
               <Icon name="book" size={12} /> 知识库
             </button>
+            <button className={`da-right-tab ${rightTab === 'assets' ? 'active' : ''}`} onClick={() => openRight('assets')}>
+              <Icon name="database" size={12} /> 资产
+            </button>
+            <button className={`da-right-tab ${rightTab === 'semantic' ? 'active' : ''}`} onClick={() => openRight('semantic')}>
+              <Icon name="plan" size={12} /> 语义
+            </button>
             <button className="da-icon-btn" style={{ marginLeft: 'auto' }} onClick={() => setRightOpen(false)} title="收起面板">
               <Icon name="close" size={13} />
             </button>
@@ -1034,6 +1144,43 @@ export function SqlStudio({ embedded = false }) {
                 onCopy={handleCopy}
               />
             ) : null}
+            {rightTab === 'assets' ? (
+              <AssetsPanel
+                items={sqlAssets}
+                loading={assetsLoading}
+                query={assetQuery}
+                setQuery={setAssetQuery}
+                onSearch={() => loadAssets()}
+                onRefresh={() => loadAssets()}
+                onOpen={(asset) => openSql(asset.sqlText, asset.businessProblem || 'SQL 资产')}
+                onSaveCurrent={() => setSaveAssetOpen(true)}
+                onCopy={handleCopy}
+              />
+            ) : null}
+            {rightTab === 'semantic' ? (
+              <SemanticPanel
+                overview={semanticOverview}
+                entities={semanticEntities}
+                metrics={semanticMetrics}
+                terms={semanticTerms}
+                loading={semanticLoading}
+                query={semanticQuery}
+                setQuery={setSemanticQuery}
+                subTab={semanticSubTab}
+                setSubTab={setSemanticSubTab}
+                onSearch={() => loadSemantic()}
+                onRefresh={() => loadSemantic()}
+                onSync={runSemanticSync}
+                syncing={semanticSyncing}
+                designIdea={designIdea}
+                setDesignIdea={setDesignIdea}
+                designResult={designResult}
+                onDesign={runSemanticDesign}
+                designing={designing}
+                onCopy={handleCopy}
+                onOpenSql={(sql) => openSql(sql, '语义层关联 SQL')}
+              />
+            ) : null}
           </div>
         </aside>
       </div>
@@ -1073,6 +1220,14 @@ export function SqlStudio({ embedded = false }) {
           onClose={() => setSolveTarget(null)}
           onSubmit={submitSolve}
           onCopy={handleCopy}
+        />
+      ) : null}
+
+      {saveAssetOpen ? (
+        <SaveAssetModal
+          sql={activeTab?.sql || ''}
+          onClose={() => setSaveAssetOpen(false)}
+          onSubmit={saveCurrentSqlAsset}
         />
       ) : null}
 
@@ -1504,6 +1659,304 @@ function KnowledgePanel({ items, loading, query, setQuery, onSearch, onRefresh, 
         );
       })}
     </div>
+  );
+}
+
+function AssetsPanel({ items, loading, query, setQuery, onSearch, onRefresh, onOpen, onSaveCurrent, onCopy }) {
+  return (
+    <div className="da-scroll">
+      <div className="da-section-head">
+        <div className="da-section-title"><Icon name="database" size={12} /> SQL 资产缓存</div>
+        <div className="da-side-actions">
+          <button className="da-icon-btn" onClick={onRefresh} title="刷新资产"><Icon name="refresh" size={13} /></button>
+          <button className="da-btn small accent" onClick={onSaveCurrent}>
+            <Icon name="plus" size={10} /> 缓存当前 SQL
+          </button>
+        </div>
+      </div>
+      <div className="da-search" style={{ margin: '0 0 10px' }}>
+        <Icon name="search" size={12} />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Enter') onSearch(); }}
+          placeholder="搜索业务问题 / SQL / 标签"
+        />
+      </div>
+      <div className="da-hint" style={{ marginBottom: 9 }}>
+        执行过的只读 SQL 自动入缓存；也可把尚未执行、但承载业务问题的 SQL 手工沉淀。
+      </div>
+      {loading ? <div className="da-tree-empty"><Icon name="refresh" size={14} className="da-spin" /> 加载中…</div> : null}
+      {!loading && !items.length ? (
+        <div className="da-tree-empty">
+          还没有 SQL 资产。运行一条查询，或点击“缓存当前 SQL”记录业务问题。
+        </div>
+      ) : null}
+      {items.map((asset) => (
+        <div className="da-kb-card" key={asset.id}>
+          <div className="da-kb-title">{asset.businessProblem || '未填写业务问题'}</div>
+          <div className="da-list-sub da-mono" title={asset.sqlText}>{asset.sqlText.replace(/\s+/g, ' ').slice(0, 150)}</div>
+          <div className="da-list-meta" style={{ marginTop: 6 }}>
+            <span>{formatTime(asset.lastSeen)}</span>
+            <span>执行 {asset.executionCount}</span>
+            <span>均 {formatDuration(asset.avgDurationMs)}</span>
+            {asset.knowledgeId ? <span className="da-status ok">已沉淀</span> : null}
+          </div>
+          <div className="da-tags">
+            {(asset.tags ? asset.tags.split(/[,，]/) : []).filter(Boolean).slice(0, 5).map((tag) => (
+              <span className="da-tag" key={tag}>{tag}</span>
+            ))}
+            {asset.domain ? <span className="da-tag">{asset.domain}</span> : null}
+            <span className="da-tag">{asset.source}</span>
+          </div>
+          <div className="da-kb-actions">
+            <button className="da-btn small ghost" onClick={() => onOpen(asset)}>载入 SQL</button>
+            <button className="da-btn small ghost" onClick={() => onCopy(asset.sqlText, 'SQL 已复制')}>
+              <Icon name="copy" size={10} /> 复制
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SemanticPanel({
+  overview, entities, metrics, terms, loading, query, setQuery, subTab, setSubTab,
+  onSearch, onRefresh, onSync, syncing, designIdea, setDesignIdea, designResult, onDesign,
+  designing, onCopy, onOpenSql,
+}) {
+  const subtabs = [
+    ['entities', '实体', entities.length],
+    ['metrics', '指标', metrics.length],
+    ['terms', '术语', terms.length],
+  ];
+  return (
+    <div className="da-scroll">
+      <div className="da-section-head">
+        <div className="da-section-title"><Icon name="plan" size={12} /> 业务语义层</div>
+        <div className="da-side-actions">
+          <button className="da-icon-btn" onClick={onRefresh} title="刷新语义层"><Icon name="refresh" size={13} /></button>
+          <button className="da-btn small accent" onClick={onSync} disabled={syncing}>
+            <Icon name={syncing ? 'refresh' : 'check'} size={10} className={syncing ? 'da-spin' : ''} />
+            {syncing ? '同步中' : '同步知识'}
+          </button>
+        </div>
+      </div>
+
+      {overview ? (
+        <div className="da-sem-stats">
+          <div><span>实体</span><strong>{overview.entities}</strong></div>
+          <div><span>指标</span><strong>{overview.metrics}</strong></div>
+          <div><span>术语</span><strong>{overview.terms}</strong></div>
+          <div><span>关联</span><strong>{overview.links}</strong></div>
+        </div>
+      ) : null}
+
+      <div className="da-design-box">
+        <div className="da-section-title"><Icon name="sparkles" size={12} /> 新特性设计助手</div>
+        <div className="da-hint" style={{ marginTop: 6 }}>
+          描述一个业务想法，语义层会找出相关实体、指标、术语、历史 SQL 与知识条目，生成设计角度和 DSH Prompt。
+        </div>
+        <textarea
+          className="da-input da-design-input"
+          value={designIdea}
+          onChange={(event) => setDesignIdea(event.target.value)}
+          placeholder="例如：新增按城市和渠道拆解的 GMV 看板，支持按周对比"
+        />
+        <div className="da-kb-actions">
+          <button className="da-btn small accent" onClick={onDesign} disabled={!designIdea.trim() || designing}>
+            <Icon name={designing ? 'refresh' : 'sparkles'} size={10} className={designing ? 'da-spin' : ''} />
+            {designing ? '生成中' : '生成设计思路'}
+          </button>
+        </div>
+      </div>
+
+      {designResult ? (
+        <div className="da-design-result">
+          <div className="da-section-title"><Icon name="check" size={12} /> 设计输出</div>
+          <div className="da-kb-section-label">建议角度</div>
+          {designResult.designAngles?.map((angle, index) => (
+            <div className="da-design-line" key={index}>• {angle}</div>
+          ))}
+          <div className="da-kb-section-label">待确认问题</div>
+          {designResult.questions?.map((question, index) => (
+            <div className="da-design-line" key={index}>? {question}</div>
+          ))}
+          <div className="da-kb-section-label">风险</div>
+          {designResult.risks?.map((risk, index) => (
+            <div className="da-design-line risk" key={index}>! {risk}</div>
+          ))}
+          {designResult.relatedKnowledge?.length ? (
+            <>
+              <div className="da-kb-section-label">关联知识</div>
+              {designResult.relatedKnowledge.slice(0, 4).map((item) => (
+                <div className="da-design-line" key={item.id}>• {item.title}</div>
+              ))}
+            </>
+          ) : null}
+          {designResult.relatedAssets?.length ? (
+            <>
+              <div className="da-kb-section-label">关联 SQL 资产</div>
+              {designResult.relatedAssets.slice(0, 3).map((asset) => (
+                <button
+                  className="da-design-line da-design-link"
+                  key={asset.id}
+                  onClick={() => onOpenSql(asset.sqlText)}
+                  title={asset.sqlText}
+                >
+                  → {asset.businessProblem || asset.sqlText.slice(0, 60)}
+                </button>
+              ))}
+            </>
+          ) : null}
+          <details className="da-prompt" style={{ marginTop: 8 }}>
+            <summary>查看完整设计 Prompt（{designResult.promptContext?.length || 0} 字符）</summary>
+            <pre>{designResult.promptContext}</pre>
+          </details>
+          <div className="da-kb-actions">
+            <button className="da-btn small ghost" onClick={() => onCopy(designResult.promptContext || '', '设计 Prompt 已复制')}>
+              <Icon name="copy" size={10} /> 复制 Prompt
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="da-sem-subtabs">
+        {subtabs.map(([id, label, count]) => (
+          <button key={id} className={subTab === id ? 'active' : ''} onClick={() => setSubTab(id)}>
+            {label} <span>{count}</span>
+          </button>
+        ))}
+      </div>
+      <div className="da-search" style={{ margin: '0 0 10px' }}>
+        <Icon name="search" size={12} />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Enter') onSearch(); }}
+          placeholder="搜索实体 / 指标 / 术语"
+        />
+      </div>
+
+      {loading ? <div className="da-tree-empty"><Icon name="refresh" size={14} className="da-spin" /> 加载中…</div> : null}
+
+      {!loading && subTab === 'entities' ? entities.map((entity) => (
+        <div className="da-kb-card" key={entity.id}>
+          <div className="da-kb-title">{entity.displayName} <span className="da-muted da-mono" style={{ fontSize: 10 }}>{entity.name}</span></div>
+          <div className="da-kb-problem">{entity.description || '暂无描述'}</div>
+          <div className="da-list-meta">
+            {entity.domain ? <span>{entity.domain}</span> : null}
+            {entity.physicalTables ? <span className="da-mono">{entity.physicalTables}</span> : null}
+          </div>
+          {entity.synonyms ? <div className="da-tags"><span className="da-tag">同义词：{entity.synonyms}</span></div> : null}
+        </div>
+      )) : null}
+
+      {!loading && subTab === 'metrics' ? metrics.map((metric) => (
+        <div className="da-kb-card" key={metric.id}>
+          <div className="da-kb-title">{metric.displayName} <span className="da-muted da-mono" style={{ fontSize: 10 }}>{metric.name}</span></div>
+          <div className="da-kb-problem">{metric.businessDefinition || '暂无业务定义'}</div>
+          {metric.entityName ? <div className="da-list-meta"><span>实体：{metric.entityName}</span></div> : null}
+          {metric.expression ? <pre className="da-kb-sql">{metric.expression}</pre> : null}
+          {metric.dimensions ? <div className="da-tags"><span className="da-tag">维度：{metric.dimensions}</span></div> : null}
+          {metric.synonyms ? <div className="da-tags"><span className="da-tag">同义词：{metric.synonyms}</span></div> : null}
+        </div>
+      )) : null}
+
+      {!loading && subTab === 'terms' ? terms.map((term) => (
+        <div className="da-kb-card" key={term.id}>
+          <div className="da-kb-title">{term.term}</div>
+          <div className="da-kb-problem">{term.definition || '暂无定义'}</div>
+          <div className="da-list-meta">
+            {term.relatedEntityName ? <span>实体：{term.relatedEntityName}</span> : null}
+            {term.relatedMetricName ? <span>指标：{term.relatedMetricName}</span> : null}
+          </div>
+          {term.synonyms ? <div className="da-tags"><span className="da-tag">同义词：{term.synonyms}</span></div> : null}
+        </div>
+      )) : null}
+
+      {!loading && ((subTab === 'entities' && !entities.length)
+        || (subTab === 'metrics' && !metrics.length)
+        || (subTab === 'terms' && !terms.length)) ? (
+        <div className="da-tree-empty">语义层暂无匹配内容。可通过 API 新增，或点击“同步知识”建立关联。</div>
+      ) : null}
+    </div>
+  );
+}
+
+function SaveAssetModal({ sql, onClose, onSubmit }) {
+  const [form, setForm] = React.useState({
+    sql: sql || '',
+    businessProblem: '',
+    domain: '销售',
+    tags: '',
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  function update(key, value) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function submit() {
+    setError('');
+    if (!form.sql.trim()) {
+      setError('SQL 不能为空。');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSubmit(form);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      title="缓存 SQL 到团队资产库"
+      onClose={onClose}
+      wide
+      footer={(
+        <>
+          <button className="da-btn ghost" onClick={onClose}>取消</button>
+          <button className="da-btn primary" onClick={submit} disabled={saving}>
+            <Icon name={saving ? 'refresh' : 'database'} size={12} className={saving ? 'da-spin' : ''} /> 保存
+          </button>
+        </>
+      )}
+    >
+      {error ? <div className="da-error-box">{error}</div> : null}
+      <div className="da-warn-box">
+        这里只缓存 SQL 文本和业务问题，不会执行。执行过的 SQL 已自动缓存，手工保存适合“还没跑但值得沉淀”的查询。
+      </div>
+      <div className="da-field">
+        <label className="da-label">业务问题</label>
+        <textarea
+          className="da-textarea"
+          value={form.businessProblem}
+          onChange={(event) => update('businessProblem', event.target.value)}
+          placeholder="这条 SQL 要回答什么业务问题？例如：按渠道拆解大促 GMV，定位下滑来源。"
+        />
+      </div>
+      <div className="da-form-row">
+        <div className="da-field">
+          <label className="da-label">业务域</label>
+          <input className="da-input" value={form.domain} onChange={(event) => update('domain', event.target.value)} placeholder="销售 / 财务 / 供应链" />
+        </div>
+        <div className="da-field">
+          <label className="da-label">标签</label>
+          <input className="da-input" value={form.tags} onChange={(event) => update('tags', event.target.value)} placeholder="GMV,渠道,大促" />
+        </div>
+      </div>
+      <div className="da-field">
+        <label className="da-label">SQL</label>
+        <textarea className="da-textarea" value={form.sql} onChange={(event) => update('sql', event.target.value)} style={{ minHeight: 140 }} />
+      </div>
+    </Modal>
   );
 }
 

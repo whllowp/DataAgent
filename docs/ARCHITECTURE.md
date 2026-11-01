@@ -28,7 +28,7 @@ flowchart TB
     direction TB
     Panel["DataAgent SQL 面板<br/>Schema 树 / 编辑器 / 结果 / 历史 / 知识库"]
     DSH["DSH Agent + 大模型"]
-    MCP["MCP stdio bridge<br/>12 个 dataagent_* 工具"]
+    MCP["MCP stdio bridge<br/>19 个 dataagent_* 工具"]
     Panel -->|"HTTPS / REST"| Gateway
     DSH -->|"tool call"| MCP
     MCP -->|"HTTPS / REST"| Gateway
@@ -219,6 +219,51 @@ EXPLAIN <sql>
 
 > 对比不会自动判断结果集语义是否等价。模型和用户必须自行确认行数、列、排序、去重、NULL 语义。
 
+### 3.9 SQL 资产缓存
+
+`query_execution` 是“每次执行的审计”，`sql_asset` 是“按 SQL 指纹聚合的开发资产”：
+
+- 执行后自动 upsert（`source=EXECUTION`）；
+- 手工缓存未执行 SQL（`source=EDITOR`）；
+- 标记解决/写知识时回写业务问题和知识 ID（`source=KNOWLEDGE`）；
+- 启动时对既有历史做 backfill；
+- 指纹归一化空白、大小写、字符串/数字字面量，把同一业务问题的参数化查询聚合。
+
+字段包括：SQL、业务问题、业务域、标签、数据源、作者、执行/成功/失败次数、平均/最近耗时、最近计划、关联知识、最近语义同步时间。
+
+### 3.10 语义层
+
+语义层解决“SQL 历史能查到，但不知道业务口径”的问题：
+
+- **Entity**：客户/商品/订单等业务对象，关联物理表、主键、粒度、同义词；
+- **Metric**：GMV/订单量/客单价等指标，包含业务定义、表达式、维度、同义词、负责人；
+- **Term**：大促/渠道/有效订单等业务术语，可关联实体与指标；
+- **Link**：`KNOWLEDGE/SQL_ASSET → ENTITY/METRIC/TERM` 的关联，带置信度、原因与 `AUTO/MANUAL` 来源。
+
+设计助手 `POST /api/semantic/design`：
+
+1. 对业务想法分词；
+2. 匹配实体/指标/术语（指标会自动带出所属实体）；
+3. 通过 Link 找到关联知识和历史 SQL；
+4. 生成设计角度、待确认问题、风险；
+5. 生成供 DSH 输出 PRD/数据模型/API/验收 SQL 的 Prompt。
+
+### 3.11 语义层 ↔ 知识库定期互通
+
+`SemanticSyncService` 由 `SemanticSyncScheduler` 定时执行（默认 30 分钟，启动 2 分钟后首次），也可 `POST /api/semantic/sync` 手动触发。
+
+流程：
+
+1. 扫描全部知识条目和 SQL 资产；
+2. 对每个语义对象构造显示名/名称/同义词别名；
+3. 在来源文本中做关键词匹配（MVP，后续替换为 embedding/LLM）；
+4. 每个来源最多保留 12 个高置信度目标；
+5. 重建 `link_source=AUTO` 的关联，保留 MANUAL；
+6. 更新 SQL 资产 `semantic_synced_at`；
+7. 写 `semantic_sync_run`（扫描数、新增/更新/删除、状态、错误）。
+
+> 详细设计与治理建议见 [SEMANTIC.md](SEMANTIC.md)。
+
 ## 4. 数据模型
 
 ```mermaid
@@ -299,6 +344,13 @@ erDiagram
 
 **不持久化结果集**：只保存 SQL 与统计，避免把业务数据复制到知识平台。需要导出时由端侧从当前结果生成 CSV。
 
+V2 新增：
+
+- `sql_asset`：开发历史 SQL 资产（业务问题、次数、耗时、最近计划、知识关联）。
+- `semantic_entity` / `semantic_metric` / `semantic_term`：语义层实体、指标、术语。
+- `semantic_link`：知识/资产与语义对象的关联，含置信度、原因、AUTO/MANUAL。
+- `semantic_sync_run`：定期互通的审计记录。
+
 ## 5. 关键流程
 
 ### 5.1 执行 SQL
@@ -371,6 +423,31 @@ stateDiagram-v2
   Reused --> KnowledgeEntry: usage_count + 1
 ```
 
+### 5.4 语义层设计助手与定期互通
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant User as 用户
+  participant UI as Studio
+  participant API as Spring Boot
+  participant SEM as 语义层
+  participant KB as 知识库/资产
+  participant DSH as DSH
+
+  User->>UI: 输入“新增城市×渠道 GMV 看板”
+  UI->>API: POST /api/semantic/design
+  API->>SEM: 实体/指标/术语匹配
+  SEM-->>API: 匹配结果 + 关联 Link
+  API->>KB: 关联知识与 SQL 资产
+  API-->>UI: 设计角度/问题/风险/Prompt
+  UI->>DSH: 复制 Prompt / 继续对话
+  Note over API,SEM: 每 30 分钟或手动触发
+  API->>KB: 扫描知识 + 资产
+  API->>SEM: 重建 AUTO 关联
+  API-->>UI: SyncRun 统计
+```
+
 ## 6. 端侧 DSH 改造
 
 ### 6.1 为什么是插件而不是 fork
@@ -400,7 +477,7 @@ dsh-plugin/
 - 左侧对象浏览器：schema 切换、表搜索、展开列/主键、点击插入列名、双击插入查询、查询 100 行。
 - 中间：多查询页签、SQL 编辑器、行号、运行/计划/AI 优化/格式化/复制、只读标识、耗时/行数状态。
 - 结果：数据 / 执行计划 / 消息；CSV 导出、JSON 复制、计划复制；截断标记。
-- 右侧：AI 优化（findings、计划摘要、候选 SQL 对比、Prompt）、历史（载入/沉淀）、知识库（详情/载入/引用）。
+- 右侧：AI 优化（findings、计划摘要、候选 SQL 对比、Prompt）、历史（载入/沉淀）、知识库（详情/载入/引用）、SQL 资产（自动缓存/业务问题/载入）、语义层（实体/指标/术语/设计助手/同步）。
 - 设置：云端地址、API Token、主题；连接注册弹窗。
 
 ### 6.3 MCP 工具
@@ -421,6 +498,13 @@ dsh-plugin/
 | `dataagent_mark_solved` | 从历史沉淀 |
 | `dataagent_search_history` | 查历史 |
 | `dataagent_get_stats` | 统计 |
+| `dataagent_search_sql_assets` | 查 SQL 资产与业务问题 |
+| `dataagent_semantic_context` | 查实体/指标/术语及关联 |
+| `dataagent_suggest_design` | 新特性设计助手 |
+| `dataagent_semantic_overview` | 语义层概览 |
+| `dataagent_sync_semantic` | 手动同步语义层 |
+| `dataagent_add_semantic_term` | 沉淀术语 |
+| `dataagent_add_semantic_metric` | 沉淀指标 |
 
 所有工具最终受云端的只读网关约束；模型不能通过 MCP 绕过 `SqlGuard`。
 

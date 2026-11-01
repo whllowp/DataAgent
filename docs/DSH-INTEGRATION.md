@@ -3,7 +3,7 @@
 DataAgent 不 fork DSH，而是交付一个 **bundle**：
 
 - `dsh.client`：向 DSH Web UI 注册 `DataAgent SQL` 主面板和侧边栏入口；
-- `dsh.bundle.patch`：同时插入一个 `@deepseek-ai/dsh-mcp-client` 行，把 12 个工具挂到当前 profile。
+- `dsh.bundle.patch`：同时插入一个 `@deepseek-ai/dsh-mcp-client` 行，把 19 个工具挂到当前 profile。
 
 这样 DSH 升级不会覆盖你的改动，卸载也只需移除 bundle。
 
@@ -156,11 +156,23 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
 ) -join "`n" | node E:\DataAgent\dataagent\mcp-server\server.js
 ```
 
-应看到 `initialize` 与 12 个工具的 JSON 响应。工具调用示例：
+应看到 `initialize` 与 19 个工具的 JSON 响应。工具调用示例：
 
 ```json
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"dataagent_explain_sql","arguments":{"sql":"SELECT * FROM customers LIMIT 5"}}}
 ```
+
+语义层/资产相关新增工具：
+
+| 工具 | 作用 |
+| --- | --- |
+| `dataagent_search_sql_assets` | 检索历史 SQL 与业务问题 |
+| `dataagent_semantic_context` | 查询实体、指标、术语及关联知识/资产 |
+| `dataagent_suggest_design` | 为新特性/新业务生成设计思路 |
+| `dataagent_semantic_overview` | 语义层规模与最近同步 |
+| `dataagent_sync_semantic` | 手动触发语义层 ↔ 知识库同步 |
+| `dataagent_add_semantic_term` | 沉淀业务术语 |
+| `dataagent_add_semantic_metric` | 沉淀指标口径 |
 
 ## 5. 在 DSH 对话中使用
 
@@ -175,8 +187,12 @@ DSH 会自动调用：
 3. `dataagent_explain_sql`
 4. `dataagent_analyze_sql`
 5. `dataagent_compare_sql`
-6. `dataagent_search_knowledge`
-7. 用户确认后 `dataagent_mark_solved` / `dataagent_save_knowledge`
+6. `dataagent_search_knowledge` / `dataagent_semantic_context`
+7. 用户确认后 `dataagent_mark_solved` / `dataagent_save_knowledge` / `dataagent_add_semantic_term` / `dataagent_add_semantic_metric`
+
+新特性设计：
+
+> 我要做一个“按城市 × 渠道拆解 GMV”的看板。先用 dataagent_suggest_design 生成设计思路，再查 dataagent_semantic_context 确认指标口径，最后给我数据模型、API 和验收 SQL。
 
 ### 推荐 Prompt（面板会自动生成完整版）
 
@@ -200,6 +216,9 @@ DSH 会自动调用：
 - [ ] “AI 优化”返回 findings 和 Prompt。
 - [ ] 对话中能看到 `mcp__dataagent__...` 工具并被调用。
 - [ ] “沉淀”后知识库出现条目。
+- [ ] “资产”页能看到自动缓存的 SQL 与业务问题。
+- [ ] “语义”页能看到实体/指标/术语，设计助手能生成设计角度与 Prompt。
+- [ ] 点击“同步知识”后关联数量变化，并出现同步记录。
 
 > 本仓库的自动化验证覆盖：Java 测试、Studio 独立页（无头 Chrome 截图 + 交互）、MCP stdio 工具调用、DSH client bundle 的模块加载。  
 > DSH 面板的最终视觉/交互需要在你的 DSH 安装中安装 bundle 后确认；不同 DSH 版本的 Slot 实现可能变化。

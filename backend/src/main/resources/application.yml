@@ -70,6 +70,10 @@ dataagent:
     max-sql-length: 100000
     # Slow queries automatically collect EXPLAIN (never EXPLAIN ANALYZE).
     auto-plan-threshold-ms: 500
+  semantic:
+    sync-enabled: ${DATAAGENT_SEMANTIC_SYNC_ENABLED:true}
+    sync-interval-ms: ${DATAAGENT_SEMANTIC_SYNC_INTERVAL_MS:1800000}
+    sync-initial-delay-ms: ${DATAAGENT_SEMANTIC_SYNC_INITIAL_DELAY_MS:120000}
 
 logging:
   level:

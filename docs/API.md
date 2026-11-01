@@ -389,7 +389,229 @@ X-User-Id: zhangsan
 
 `204 No Content`。
 
-## 7. 优化
+## 7. SQL 资产缓存
+
+### `GET /api/sql-assets?q=&domain=&datasourceId=&page=0&size=20`
+
+```json
+{
+  "items": [
+    {
+      "id": "...",
+      "sqlText": "SELECT city, SUM(amount) FROM sales_orders ...",
+      "businessProblem": "按城市分析大促 GMV，定位下滑来源",
+      "domain": "销售",
+      "tags": "GMV,城市",
+      "datasourceId": "...",
+      "author": "demo",
+      "source": "EXECUTION",
+      "executionCount": 3,
+      "successCount": 3,
+      "failureCount": 0,
+      "avgDurationMs": 182,
+      "lastDurationMs": 140,
+      "knowledgeId": null,
+      "firstSeen": "...",
+      "lastSeen": "...",
+      "semanticSyncedAt": "...",
+      "createdAt": "...",
+      "updatedAt": "..."
+    }
+  ],
+  "total": 1,
+  "page": 0,
+  "size": 20,
+  "totalPages": 1
+}
+```
+
+### `GET /api/sql-assets/stats`
+
+```json
+{ "totalAssets": 8, "withBusinessProblem": 6, "withKnowledge": 2, "linkedToSemantic": 8 }
+```
+
+### `POST /api/sql-assets`
+
+```json
+{
+  "sql": "SELECT ...",
+  "businessProblem": "这条 SQL 要回答的业务问题",
+  "domain": "销售",
+  "tags": "GMV,渠道",
+  "datasourceId": "..."
+}
+```
+
+只缓存文本，不执行。执行过的只读 SQL 会自动 upsert。
+
+### `POST /api/sql-assets/import`
+
+```json
+{
+  "items": [
+    { "sql": "SELECT ...", "businessProblem": "问题 A", "domain": "销售" },
+    { "sql": "SELECT ...", "businessProblem": "问题 B", "domain": "财务" }
+  ]
+}
+```
+
+```json
+{ "imported": 2 }
+```
+
+### `DELETE /api/sql-assets/{id}`
+
+`204 No Content`。
+
+## 8. 语义层
+
+### `GET /api/semantic/overview`
+
+```json
+{
+  "entities": 3,
+  "metrics": 4,
+  "terms": 4,
+  "links": 29,
+  "knowledgeLinked": 3,
+  "assetsLinked": 8,
+  "lastSync": { "...": "SyncRunView" },
+  "recentRuns": []
+}
+```
+
+### 实体
+
+| Method | Path |
+| --- | --- |
+| GET | `/api/semantic/entities?q=&domain=` |
+| POST | `/api/semantic/entities` |
+| PUT | `/api/semantic/entities/{id}` |
+| DELETE | `/api/semantic/entities/{id}` |
+
+```json
+{
+  "name": "sales_order",
+  "displayName": "订单",
+  "domain": "销售",
+  "description": "客户购买商品形成的交易订单",
+  "physicalTables": "SALES_ORDERS",
+  "synonyms": "订单,交易,order",
+  "owner": "data-team",
+  "tags": "核心实体,销售",
+  "status": "ACTIVE"
+}
+```
+
+### 指标
+
+| Method | Path |
+| --- | --- |
+| GET | `/api/semantic/metrics?q=` |
+| POST | `/api/semantic/metrics` |
+| PUT | `/api/semantic/metrics/{id}` |
+| DELETE | `/api/semantic/metrics/{id}` |
+
+```json
+{
+  "name": "gmv",
+  "displayName": "成交总额",
+  "entityId": "...",
+  "businessDefinition": "支付成功订单金额合计，退款是否抵扣以业务口径为准",
+  "expression": "SUM(sales_orders.amount) WHERE status='PAID'",
+  "dimensions": "日期,城市,渠道,商品类目",
+  "synonyms": "GMV,成交额,销售额,营收",
+  "owner": "data-team",
+  "tags": "核心指标,销售",
+  "status": "ACTIVE"
+}
+```
+
+### 术语
+
+| Method | Path |
+| --- | --- |
+| GET | `/api/semantic/terms?q=` |
+| POST | `/api/semantic/terms` |
+| PUT | `/api/semantic/terms/{id}` |
+| DELETE | `/api/semantic/terms/{id}` |
+
+```json
+{
+  "term": "大促",
+  "definition": "促销活动期间，订单、成交与退款口径需要与日常区分",
+  "synonyms": "促销,活动,大促",
+  "relatedEntityId": "...",
+  "relatedMetricId": "...",
+  "owner": "data-team",
+  "tags": "业务口径,销售",
+  "status": "ACTIVE"
+}
+```
+
+### `GET /api/semantic/context?q=GMV%20成交额&domain=销售`
+
+返回匹配的实体/指标/术语，以及通过 AUTO/MANUAL 关联找到的知识条目和 SQL 资产。
+
+### `POST /api/semantic/design`
+
+```json
+{
+  "idea": "新增按城市和渠道拆解的 GMV 看板，支持按周对比",
+  "domain": "销售",
+  "datasourceId": "..."
+}
+```
+
+返回：
+
+```json
+{
+  "idea": "...",
+  "domain": "销售",
+  "entities": [],
+  "metrics": [],
+  "terms": [],
+  "designAngles": ["业务目标...", "指标与口径...", "数据实体..."],
+  "questions": ["统计粒度和时间范围是什么？"],
+  "risks": ["历史 SQL 可能包含旧口径..."],
+  "relatedKnowledge": [],
+  "relatedAssets": [],
+  "promptContext": "你是 DataAgent 的业务语义与数据产品设计助手..."
+}
+```
+
+### 关联与同步
+
+| Method | Path | 说明 |
+| --- | --- | --- |
+| GET | `/api/semantic/links?targetType=METRIC&targetId=...` | 语义对象关联的知识/资产 |
+| GET | `/api/semantic/links/source?sourceType=KNOWLEDGE&sourceId=...` | 来源关联的语义对象 |
+| GET | `/api/semantic/{targetType}/{targetId}/knowledge` | 关联知识 |
+| GET | `/api/semantic/{targetType}/{targetId}/assets` | 关联 SQL 资产 |
+| POST | `/api/semantic/sync` | 手动同步，返回 SyncRun |
+| GET | `/api/semantic/sync/runs` | 最近同步记录 |
+
+`targetType` / `sourceType` 取值：`ENTITY`、`METRIC`、`TERM`；来源：`KNOWLEDGE`、`SQL_ASSET`。
+
+```json
+{
+  "id": "...",
+  "triggerType": "MANUAL",
+  "status": "SUCCESS",
+  "startedAt": "...",
+  "finishedAt": "...",
+  "scannedAssets": 8,
+  "scannedKnowledge": 3,
+  "createdLinks": 29,
+  "updatedLinks": 0,
+  "removedLinks": 0,
+  "message": "语义层与知识库同步完成"
+}
+```
+
+## 9. 优化
 
 ### `POST /api/optimize/analyze`
 
@@ -478,7 +700,7 @@ X-User-Id: zhangsan
 { "prompt": "...", "guardrails": ["..."] }
 ```
 
-## 8. 错误码
+## 10. 错误码
 
 | HTTP | code | 说明 |
 | --- | --- | --- |
@@ -489,7 +711,7 @@ X-User-Id: zhangsan
 | 502 | `UPSTREAM_ERROR` | 上游/数据库错误（部分场景返回 200 + status=ERROR） |
 | 500 | `INTERNAL_ERROR` | 未预期异常 |
 
-## 9. curl 速查
+## 11. curl 速查
 
 ```bash
 TOKEN=dataagent-dev-token
@@ -508,4 +730,14 @@ curl -s -X POST "$BASE/api/optimize/analyze" \
   -d '{"datasourceId":"<id>","sql":"SELECT * FROM customers WHERE LOWER(name) LIKE '\''%a%'\''"}'
 
 curl -s "$BASE/api/knowledge?q=索引失效" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/sql-assets?q=GMV&size=5" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/semantic/context?q=GMV%20城市" -H "X-API-Key: $TOKEN"
+
+curl -s -X POST "$BASE/api/semantic/design" \
+  -H "X-API-Key: $TOKEN" -H "Content-Type: application/json" \
+  -d '{"idea":"新增按城市和渠道拆解的 GMV 看板","domain":"销售"}'
+
+curl -s -X POST "$BASE/api/semantic/sync" -H "X-API-Key: $TOKEN"
 ```

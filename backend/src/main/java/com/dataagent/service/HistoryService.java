@@ -37,13 +37,16 @@ public class HistoryService {
     private final DatasourceRepository datasources;
     private final KnowledgeEntryRepository knowledge;
     private final KnowledgeService knowledgeService;
+    private final SqlAssetService sqlAssets;
 
     public HistoryService(QueryExecutionRepository executions, DatasourceRepository datasources,
-                          KnowledgeEntryRepository knowledge, KnowledgeService knowledgeService) {
+                          KnowledgeEntryRepository knowledge, KnowledgeService knowledgeService,
+                          SqlAssetService sqlAssets) {
         this.executions = executions;
         this.datasources = datasources;
         this.knowledge = knowledge;
         this.knowledgeService = knowledgeService;
+        this.sqlAssets = sqlAssets;
     }
 
     @Transactional(readOnly = true)
@@ -115,6 +118,7 @@ public class HistoryService {
         execution.setSolved(true);
         execution.setKnowledgeId(entry.getId());
         executions.save(execution);
+        sqlAssets.linkKnowledge(execution, entry);
 
         return new HistoryDtos.SolveResult(execution.getId(), entry.getId(), knowledgeService.viewOf(entry));
     }

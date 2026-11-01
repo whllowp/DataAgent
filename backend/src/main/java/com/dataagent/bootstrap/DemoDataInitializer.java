@@ -4,9 +4,19 @@ import com.dataagent.config.DataAgentProperties;
 import com.dataagent.domain.Datasource;
 import com.dataagent.domain.KnowledgeEntry;
 import com.dataagent.domain.QueryExecution;
+import com.dataagent.domain.SemanticEntity;
+import com.dataagent.domain.SemanticMetric;
+import com.dataagent.domain.SemanticTerm;
 import com.dataagent.repository.DatasourceRepository;
 import com.dataagent.repository.KnowledgeEntryRepository;
 import com.dataagent.repository.QueryExecutionRepository;
+import com.dataagent.repository.SemanticEntityRepository;
+import com.dataagent.repository.SemanticLinkRepository;
+import com.dataagent.repository.SemanticMetricRepository;
+import com.dataagent.repository.SemanticTermRepository;
+import com.dataagent.repository.SqlAssetRepository;
+import com.dataagent.service.SemanticSyncService;
+import com.dataagent.service.SqlAssetService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -23,6 +33,8 @@ import java.sql.Statement;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 
@@ -37,13 +49,31 @@ public class DemoDataInitializer implements ApplicationRunner {
     private final DatasourceRepository datasources;
     private final QueryExecutionRepository executions;
     private final KnowledgeEntryRepository knowledge;
+    private final SqlAssetRepository assets;
+    private final SemanticEntityRepository semanticEntities;
+    private final SemanticMetricRepository semanticMetrics;
+    private final SemanticTermRepository semanticTerms;
+    private final SemanticLinkRepository semanticLinks;
+    private final SqlAssetService sqlAssetService;
+    private final SemanticSyncService semanticSyncService;
 
     public DemoDataInitializer(DataAgentProperties properties, DatasourceRepository datasources,
-                               QueryExecutionRepository executions, KnowledgeEntryRepository knowledge) {
+                               QueryExecutionRepository executions, KnowledgeEntryRepository knowledge,
+                               SqlAssetRepository assets, SemanticEntityRepository semanticEntities,
+                               SemanticMetricRepository semanticMetrics, SemanticTermRepository semanticTerms,
+                               SemanticLinkRepository semanticLinks, SqlAssetService sqlAssetService,
+                               SemanticSyncService semanticSyncService) {
         this.properties = properties;
         this.datasources = datasources;
         this.executions = executions;
         this.knowledge = knowledge;
+        this.assets = assets;
+        this.semanticEntities = semanticEntities;
+        this.semanticMetrics = semanticMetrics;
+        this.semanticTerms = semanticTerms;
+        this.semanticLinks = semanticLinks;
+        this.sqlAssetService = sqlAssetService;
+        this.semanticSyncService = semanticSyncService;
     }
 
     @Override
@@ -55,6 +85,20 @@ public class DemoDataInitializer implements ApplicationRunner {
         Datasource demo = datasources.findByName(DEMO_NAME).orElseGet(this::createDatasource);
         if (executions.count() == 0) {
             seedHistoryAndKnowledge(demo);
+        }
+        if (assets.count() == 0) {
+            int backfilled = sqlAssetService.backfillFromExecutions();
+            log.info("Backfilled {} SQL assets from query history", backfilled);
+        }
+        for (QueryExecution execution : executions.findAll()) {
+            if (execution.getKnowledgeId() != null) {
+                knowledge.findById(execution.getKnowledgeId())
+                        .ifPresent(entry -> sqlAssetService.linkKnowledge(execution, entry));
+            }
+        }
+        seedSemanticLayer();
+        if (semanticLinks.count() == 0) {
+            semanticSyncService.sync("SEED");
         }
         log.info("Demo datasource ready: {} ({})", demo.getName(), demo.getId());
     }
@@ -315,6 +359,110 @@ public class DemoDataInitializer implements ApplicationRunner {
         knowledge.save(secondEntry);
 
         log.info("Seeded demo history and knowledge base");
+    }
+
+    private void seedSemanticLayer() {
+        Map<String, SemanticEntity> entityMap = new HashMap<>();
+        for (SemanticEntity entity : semanticEntities.findAll()) {
+            entityMap.put(entity.getName(), entity);
+        }
+        if (semanticEntities.count() == 0) {
+            entityMap.put("customer", saveEntity("customer", "客户", "销售",
+                    "购买商品或服务的个人/企业客户。", "CUSTOMERS",
+                    "客户,用户,buyer,customer", "核心实体,销售"));
+            entityMap.put("product", saveEntity("product", "商品", "销售",
+                    "可售卖的商品/SKU。", "PRODUCTS",
+                    "产品,商品,sku,product", "核心实体,销售"));
+            entityMap.put("sales_order", saveEntity("sales_order", "订单", "销售",
+                    "客户购买商品形成的交易订单。", "SALES_ORDERS",
+                    "订单,交易,order,sales_order", "核心实体,销售,交易"));
+        }
+
+        Map<String, SemanticMetric> metricMap = new HashMap<>();
+        for (SemanticMetric metric : semanticMetrics.findAll()) {
+            metricMap.put(metric.getName(), metric);
+        }
+        if (semanticMetrics.count() == 0) {
+            SemanticEntity salesOrder = entityMap.get("sales_order");
+            SemanticEntity customer = entityMap.get("customer");
+            metricMap.put("gmv", saveMetric("gmv", "成交总额", salesOrder,
+                    "支付成功订单的金额合计；退款是否抵扣需由业务口径确认。",
+                    "SUM(sales_orders.amount) WHERE status = 'PAID'",
+                    "日期,城市,渠道,商品类目", "GMV,成交额,销售额,营收", "核心指标,销售"));
+            metricMap.put("order_count", saveMetric("order_count", "订单量", salesOrder,
+                    "支付成功订单的数量。",
+                    "COUNT(DISTINCT sales_orders.id) WHERE status = 'PAID'",
+                    "日期,城市,渠道", "订单数,单量,order_count", "核心指标,销售"));
+            metricMap.put("aov", saveMetric("aov", "客单价", salesOrder,
+                    "成交总额 / 支付客户数，用于衡量单客价值。",
+                    "SUM(sales_orders.amount) / COUNT(DISTINCT sales_orders.customer_id)",
+                    "日期,城市,渠道", "客单价,平均订单金额,AOV", "核心指标,客户"));
+            metricMap.put("customer_count", saveMetric("customer_count", "客户数", customer,
+                    "发生支付行为的去重客户数。",
+                    "COUNT(DISTINCT customers.id)",
+                    "日期,城市,客户分层", "用户数,客户数,买家数", "核心指标,客户"));
+        }
+
+        if (semanticTerms.count() == 0) {
+            saveTerm("大促", "促销活动期间，订单、成交与退款口径需要与日常区分。",
+                    "促销,活动,大促", entityMap.get("sales_order"), metricMap.get("gmv"), "业务口径,销售");
+            saveTerm("渠道", "订单来源渠道：WEB / APP / API / OFFLINE。",
+                    "渠道,来源,channel", null, null, "维度,销售");
+            saveTerm("GMV", "成交总额，通常指支付成功订单金额合计。",
+                    "GMV,成交额,销售额", entityMap.get("sales_order"), metricMap.get("gmv"), "指标,销售");
+            saveTerm("有效订单", "支付成功且未退款的订单。",
+                    "有效订单,支付订单,PAID", entityMap.get("sales_order"), metricMap.get("order_count"), "业务口径,销售");
+        }
+        if (!entityMap.isEmpty() || !metricMap.isEmpty()) {
+            log.info("Semantic layer ready: entities={}, metrics={}, terms={}",
+                    semanticEntities.count(), semanticMetrics.count(), semanticTerms.count());
+        }
+    }
+
+    private SemanticEntity saveEntity(String name, String displayName, String domain, String description,
+                                      String physicalTables, String synonyms, String tags) {
+        SemanticEntity entity = new SemanticEntity();
+        entity.setName(name);
+        entity.setDisplayName(displayName);
+        entity.setDomain(domain);
+        entity.setDescription(description);
+        entity.setPhysicalTables(physicalTables);
+        entity.setSynonyms(synonyms);
+        entity.setOwner("demo");
+        entity.setTags(tags);
+        entity.setStatus("ACTIVE");
+        return semanticEntities.save(entity);
+    }
+
+    private SemanticMetric saveMetric(String name, String displayName, SemanticEntity entity,
+                                      String definition, String expression, String dimensions,
+                                      String synonyms, String tags) {
+        SemanticMetric metric = new SemanticMetric();
+        metric.setName(name);
+        metric.setDisplayName(displayName);
+        metric.setEntityId(entity == null ? null : entity.getId());
+        metric.setBusinessDefinition(definition);
+        metric.setExpression(expression);
+        metric.setDimensions(dimensions);
+        metric.setSynonyms(synonyms);
+        metric.setOwner("demo");
+        metric.setTags(tags);
+        metric.setStatus("ACTIVE");
+        return semanticMetrics.save(metric);
+    }
+
+    private void saveTerm(String termValue, String definition, String synonyms,
+                          SemanticEntity entity, SemanticMetric metric, String tags) {
+        SemanticTerm term = new SemanticTerm();
+        term.setTerm(termValue);
+        term.setDefinition(definition);
+        term.setSynonyms(synonyms);
+        term.setRelatedEntityId(entity == null ? null : entity.getId());
+        term.setRelatedMetricId(metric == null ? null : metric.getId());
+        term.setOwner("demo");
+        term.setTags(tags);
+        term.setStatus("ACTIVE");
+        semanticTerms.save(term);
     }
 
     private long count(Connection connection, String table) throws Exception {

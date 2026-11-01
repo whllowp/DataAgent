@@ -36,16 +36,18 @@ public class JdbcQueryService {
     private final ResultValueConverter valueConverter;
     private final QueryExecutionRepository executions;
     private final DataAgentProperties properties;
+    private final SqlAssetService sqlAssets;
 
     public JdbcQueryService(DatasourceService datasources, SqlGuard guard, PlanService planService,
                             ResultValueConverter valueConverter, QueryExecutionRepository executions,
-                            DataAgentProperties properties) {
+                            DataAgentProperties properties, SqlAssetService sqlAssets) {
         this.datasources = datasources;
         this.guard = guard;
         this.planService = planService;
         this.valueConverter = valueConverter;
         this.executions = executions;
         this.properties = properties;
+        this.sqlAssets = sqlAssets;
     }
 
     public SqlDtos.QueryResult execute(UUID datasourceId, String rawSql, Integer maxRows,
@@ -159,6 +161,11 @@ public class JdbcQueryService {
             execution.setPlanFormat(plan.format());
         }
         executions.save(execution);
+        try {
+            sqlAssets.cacheExecution(execution, datasource);
+        } catch (Exception assetError) {
+            log.warn("Failed to cache SQL asset for query {}: {}", queryId, assetError.getMessage());
+        }
 
         if (error != null) {
             log.info("Query {} failed in {} ms: {}", queryId, elapsedMs, error);
