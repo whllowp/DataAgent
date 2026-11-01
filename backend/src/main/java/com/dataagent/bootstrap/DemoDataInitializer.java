@@ -430,7 +430,7 @@ public class DemoDataInitializer implements ApplicationRunner {
         entity.setSynonyms(synonyms);
         entity.setOwner("demo");
         entity.setTags(tags);
-        entity.setStatus("ACTIVE");
+        entity.setStatus("DRAFT");
         return semanticEntities.save(entity);
     }
 
@@ -447,7 +447,7 @@ public class DemoDataInitializer implements ApplicationRunner {
         metric.setSynonyms(synonyms);
         metric.setOwner("demo");
         metric.setTags(tags);
-        metric.setStatus("ACTIVE");
+        metric.setStatus("DRAFT");
         return semanticMetrics.save(metric);
     }
 
@@ -461,7 +461,7 @@ public class DemoDataInitializer implements ApplicationRunner {
         term.setRelatedMetricId(metric == null ? null : metric.getId());
         term.setOwner("demo");
         term.setTags(tags);
-        term.setStatus("ACTIVE");
+        term.setStatus("DRAFT");
         semanticTerms.save(term);
     }
 

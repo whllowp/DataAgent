@@ -1731,6 +1731,7 @@ function SemanticPanel({
     ['metrics', '指标', metrics.length],
     ['terms', '术语', terms.length],
   ];
+  const demoOwned = [...entities, ...metrics, ...terms].some((item) => item.owner === 'demo');
   return (
     <div className="da-scroll">
       <div className="da-section-head">
@@ -1743,6 +1744,12 @@ function SemanticPanel({
           </button>
         </div>
       </div>
+
+      {demoOwned ? (
+        <div className="da-warn-box">
+          当前包含 owner=demo 的示例口径（DRAFT）。正式使用前请通过 API/DSH 更新为团队确认的业务定义，并把 status 改为 ACTIVE。
+        </div>
+      ) : null}
 
       {overview ? (
         <div className="da-sem-stats">
@@ -1843,7 +1850,7 @@ function SemanticPanel({
 
       {!loading && subTab === 'entities' ? entities.map((entity) => (
         <div className="da-kb-card" key={entity.id}>
-          <div className="da-kb-title">{entity.displayName} <span className="da-muted da-mono" style={{ fontSize: 10 }}>{entity.name}</span></div>
+          <div className="da-kb-title">{entity.displayName} <span className="da-muted da-mono" style={{ fontSize: 10 }}>{entity.name}</span> <span className={`da-status ${entity.status === 'ACTIVE' ? 'ok' : 'warn'}`}>{entity.status}</span></div>
           <div className="da-kb-problem">{entity.description || '暂无描述'}</div>
           <div className="da-list-meta">
             {entity.domain ? <span>{entity.domain}</span> : null}
@@ -1855,7 +1862,7 @@ function SemanticPanel({
 
       {!loading && subTab === 'metrics' ? metrics.map((metric) => (
         <div className="da-kb-card" key={metric.id}>
-          <div className="da-kb-title">{metric.displayName} <span className="da-muted da-mono" style={{ fontSize: 10 }}>{metric.name}</span></div>
+          <div className="da-kb-title">{metric.displayName} <span className="da-muted da-mono" style={{ fontSize: 10 }}>{metric.name}</span> <span className={`da-status ${metric.status === 'ACTIVE' ? 'ok' : 'warn'}`}>{metric.status}</span></div>
           <div className="da-kb-problem">{metric.businessDefinition || '暂无业务定义'}</div>
           {metric.entityName ? <div className="da-list-meta"><span>实体：{metric.entityName}</span></div> : null}
           {metric.expression ? <pre className="da-kb-sql">{metric.expression}</pre> : null}
@@ -1866,7 +1873,7 @@ function SemanticPanel({
 
       {!loading && subTab === 'terms' ? terms.map((term) => (
         <div className="da-kb-card" key={term.id}>
-          <div className="da-kb-title">{term.term}</div>
+          <div className="da-kb-title">{term.term} <span className={`da-status ${term.status === 'ACTIVE' ? 'ok' : 'warn'}`}>{term.status}</span></div>
           <div className="da-kb-problem">{term.definition || '暂无定义'}</div>
           <div className="da-list-meta">
             {term.relatedEntityName ? <span>实体：{term.relatedEntityName}</span> : null}

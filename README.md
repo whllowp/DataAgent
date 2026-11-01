@@ -92,6 +92,8 @@ flowchart LR
 
 更完整的设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，语义层见 [docs/SEMANTIC.md](docs/SEMANTIC.md)，接口见 [docs/API.md](docs/API.md)，DSH 集成见 [docs/DSH-INTEGRATION.md](docs/DSH-INTEGRATION.md)。
 
+> **语义层演示口径**：内置 GMV、客单价、订单量、有效订单、渠道、大促等定义是示例，`owner=demo`、`status=DRAFT`；正式使用前请由业务/数据负责人替换并改为 `ACTIVE`。
+
 ## 快速开始（本地 H2 演示库）
 
 ### 0. 环境
@@ -225,7 +227,6 @@ java -jar backend/target/dataagent-cloud-0.1.0.jar
 或直接 `docker compose up --build`（见 `docker-compose.yml`，演示库默认关闭）。
 
 ## 安全边界（必读）
-
 - **默认只读**：只允许 `SELECT / WITH / VALUES / SHOW / DESCRIBE`，拒绝多语句、DDL/DML、`SELECT ... INTO`、`EXPLAIN ANALYZE`、`pg_sleep` 等。  
   这不是完整的 SQL 解析器，生产应再加数据库只读账号、网络白名单和审计。
 - **密码不落端侧**：端侧只持有 API Token；数据源密码用 AES-GCM 加密后存入云端元数据库。

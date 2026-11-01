@@ -262,7 +262,8 @@ EXPLAIN <sql>
 6. 更新 SQL 资产 `semantic_synced_at`；
 7. 写 `semantic_sync_run`（扫描数、新增/更新/删除、状态、错误）。
 
-> 详细设计与治理建议见 [SEMANTIC.md](SEMANTIC.md)。
+> 详细设计与治理建议见 [SEMANTIC.md](SEMANTIC.md)。  
+> 内置演示定义为 `owner=demo`、`status=DRAFT`，正式使用前必须替换为团队确认口径。
 
 ## 4. 数据模型
 
