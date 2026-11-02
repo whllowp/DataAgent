@@ -4,6 +4,7 @@ import com.dataagent.domain.KnowledgeEntry;
 import com.dataagent.domain.SemanticEntity;
 import com.dataagent.domain.SemanticLink;
 import com.dataagent.domain.SemanticMetric;
+import com.dataagent.domain.SemanticRelationship;
 import com.dataagent.domain.SemanticSyncRun;
 import com.dataagent.domain.SemanticTerm;
 import com.dataagent.domain.SqlAsset;
@@ -11,6 +12,7 @@ import com.dataagent.repository.KnowledgeEntryRepository;
 import com.dataagent.repository.SemanticEntityRepository;
 import com.dataagent.repository.SemanticLinkRepository;
 import com.dataagent.repository.SemanticMetricRepository;
+import com.dataagent.repository.SemanticRelationshipRepository;
 import com.dataagent.repository.SemanticSyncRunRepository;
 import com.dataagent.repository.SemanticTermRepository;
 import com.dataagent.repository.SqlAssetRepository;
@@ -42,26 +44,31 @@ public class SemanticService {
     private final SemanticMetricRepository metrics;
     private final SemanticTermRepository terms;
     private final SemanticLinkRepository links;
+    private final SemanticRelationshipRepository relationships;
     private final SemanticSyncRunRepository syncRuns;
     private final KnowledgeEntryRepository knowledge;
     private final SqlAssetRepository assets;
     private final KnowledgeService knowledgeService;
     private final SqlAssetService sqlAssetService;
+    private final VerifiedQueryService verifiedQueries;
 
     public SemanticService(SemanticEntityRepository entities, SemanticMetricRepository metrics,
                            SemanticTermRepository terms, SemanticLinkRepository links,
+                           SemanticRelationshipRepository relationships,
                            SemanticSyncRunRepository syncRuns, KnowledgeEntryRepository knowledge,
                            SqlAssetRepository assets, KnowledgeService knowledgeService,
-                           SqlAssetService sqlAssetService) {
+                           SqlAssetService sqlAssetService, VerifiedQueryService verifiedQueries) {
         this.entities = entities;
         this.metrics = metrics;
         this.terms = terms;
         this.links = links;
+        this.relationships = relationships;
         this.syncRuns = syncRuns;
         this.knowledge = knowledge;
         this.assets = assets;
         this.knowledgeService = knowledgeService;
         this.sqlAssetService = sqlAssetService;
+        this.verifiedQueries = verifiedQueries;
     }
 
     @Transactional(readOnly = true)
@@ -199,6 +206,96 @@ public class SemanticService {
     }
 
     @Transactional(readOnly = true)
+    public List<SemanticDtos.RelationshipView> listRelationships(String query) {
+        List<SemanticRelationship> found = query == null || query.isBlank()
+                ? relationships.findAllByOrderByUpdatedAtDesc()
+                : relationships.search(query.trim());
+        return found.stream().map(this::toRelationshipView).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<SemanticDtos.RelationshipView> relationshipsForEntities(Collection<UUID> entityIds) {
+        Map<UUID, SemanticRelationship> found = new java.util.LinkedHashMap<>();
+        for (UUID entityId : entityIds) {
+            for (SemanticRelationship relationship : relationships
+                    .findByFromEntityIdOrToEntityIdOrderByNameAsc(entityId, entityId)) {
+                found.putIfAbsent(relationship.getId(), relationship);
+            }
+        }
+        return found.values().stream().map(this::toRelationshipView).toList();
+    }
+
+    @Transactional
+    public SemanticDtos.RelationshipView createRelationship(SemanticDtos.RelationshipRequest request) {
+        String name = request.name().trim();
+        relationships.findByNameIgnoreCase(name).ifPresent(existing -> {
+            throw ApiException.badRequest("语义关系名称已存在: " + name);
+        });
+        SemanticRelationship relationship = new SemanticRelationship();
+        applyRelationship(relationship, request);
+        return toRelationshipView(relationships.save(relationship));
+    }
+
+    @Transactional
+    public SemanticDtos.RelationshipView updateRelationship(UUID id,
+                                                             SemanticDtos.RelationshipRequest request) {
+        SemanticRelationship relationship = relationships.findById(id)
+                .orElseThrow(() -> ApiException.notFound("语义关系不存在: " + id));
+        String name = request.name().trim();
+        relationships.findByNameIgnoreCase(name)
+                .filter(existing -> !existing.getId().equals(id))
+                .ifPresent(existing -> {
+                    throw ApiException.badRequest("语义关系名称已存在: " + name);
+                });
+        applyRelationship(relationship, request);
+        return toRelationshipView(relationships.save(relationship));
+    }
+
+    @Transactional
+    public void deleteRelationship(UUID id) {
+        if (!relationships.existsById(id)) {
+            throw ApiException.notFound("语义关系不存在: " + id);
+        }
+        relationships.deleteById(id);
+    }
+
+    private void applyRelationship(SemanticRelationship relationship,
+                                   SemanticDtos.RelationshipRequest request) {
+        if (request.fromEntityId().equals(request.toEntityId())) {
+            throw ApiException.badRequest("语义关系的起点和终点不能是同一实体");
+        }
+        SemanticEntity from = entities.findById(request.fromEntityId())
+                .orElseThrow(() -> ApiException.badRequest("起点实体不存在: " + request.fromEntityId()));
+        SemanticEntity to = entities.findById(request.toEntityId())
+                .orElseThrow(() -> ApiException.badRequest("终点实体不存在: " + request.toEntityId()));
+        relationship.setName(request.name().trim());
+        relationship.setFromEntityId(from.getId());
+        relationship.setToEntityId(to.getId());
+        relationship.setRelationshipType(request.relationshipType().trim().toUpperCase(Locale.ROOT));
+        relationship.setJoinCondition(request.joinCondition().trim());
+        relationship.setDescription(request.description() == null ? null : request.description().trim());
+        relationship.setSynonyms(request.synonyms() == null ? null : request.synonyms().trim());
+        relationship.setOwner(request.owner() == null ? null : request.owner().trim());
+        relationship.setTags(request.tags() == null ? null : request.tags().trim());
+        relationship.setStatus(request.status() == null || request.status().isBlank()
+                ? "ACTIVE" : request.status().trim().toUpperCase(Locale.ROOT));
+    }
+
+    private SemanticDtos.RelationshipView toRelationshipView(SemanticRelationship relationship) {
+        Map<UUID, String> names = entities.findAllById(List.of(relationship.getFromEntityId(),
+                        relationship.getToEntityId())).stream()
+                .collect(Collectors.toMap(SemanticEntity::getId, SemanticEntity::getDisplayName));
+        return new SemanticDtos.RelationshipView(
+                relationship.getId(), relationship.getName(),
+                relationship.getFromEntityId(), names.get(relationship.getFromEntityId()),
+                relationship.getToEntityId(), names.get(relationship.getToEntityId()),
+                relationship.getRelationshipType(), relationship.getJoinCondition(),
+                relationship.getDescription(), relationship.getSynonyms(), relationship.getOwner(),
+                relationship.getTags(), relationship.getStatus(),
+                relationship.getCreatedAt(), relationship.getUpdatedAt());
+    }
+
+    @Transactional(readOnly = true)
     public SemanticDtos.SemanticContext context(String query, String domain) {
         List<SemanticDtos.EntityView> matchedEntities = new ArrayList<>(listEntities(query, domain));
         List<SemanticDtos.MetricView> matchedMetrics = listMetrics(query);
@@ -218,6 +315,12 @@ public class SemanticService {
             }
         }
 
+        Set<UUID> metricIds = matchedMetrics.stream().map(SemanticDtos.MetricView::id)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        List<SemanticDtos.RelationshipView> relationshipViews = relationshipsForEntities(entityIds);
+        List<com.dataagent.web.dto.VerifiedQueryDtos.View> verified = verifiedQueries.context(
+                query, metricIds, entityIds);
+
         Set<UUID> knowledgeIds = new LinkedHashSet<>();
         Set<UUID> assetIds = new LinkedHashSet<>();
         collectSources("ENTITY", matchedEntities.stream().map(SemanticDtos.EntityView::id).toList(), knowledgeIds, assetIds);
@@ -234,7 +337,8 @@ public class SemanticService {
                 .toList();
 
         return new SemanticDtos.SemanticContext(
-                query, matchedEntities, matchedMetrics, matchedTerms, linkedKnowledge, linkedAssets);
+                query, matchedEntities, matchedMetrics, matchedTerms, relationshipViews, verified,
+                linkedKnowledge, linkedAssets);
     }
 
     @Transactional(readOnly = true)
@@ -266,6 +370,15 @@ public class SemanticService {
         } else {
             angles.add("数据实体：语义层没有匹配实体，需要先确认真实表、主键、时间字段和跨表 JOIN 关系。");
         }
+        if (!context.relationships().isEmpty()) {
+            angles.add("实体关系（Ontology）：复用 " + names(context.relationships().stream()
+                    .map(SemanticDtos.RelationshipView::name).toList())
+                    + "，JOIN 时确认基数与去重键，避免一对多放大。");
+        }
+        if (!context.verifiedQueries().isEmpty()) {
+            angles.add("已验证查询：优先参考 " + context.verifiedQueries().size()
+                    + " 条已审核 Q→SQL，保持筛选条件、粒度和输出列一致。");
+        }
         angles.add("维度切分：至少定义时间、组织/区域、产品/渠道等常用维度，并说明哪些维度不能下钻。");
         angles.add("数据质量与权限：明确迟到数据、去重、退款/取消、NULL 语义，以及字段级权限与脱敏。");
         angles.add("交付路径：语义定义 → SQL/数据模型 → API/页面 → 指标对账 → 灰度与验收。");
@@ -280,6 +393,9 @@ public class SemanticService {
         questions.add("统计粒度和时间范围是什么？是否需要历史回溯、同比/环比或实时性？");
         questions.add("哪些维度必须支持？是否存在组织、区域、渠道、产品等权限边界？");
         questions.add("结果异常时以哪张表/哪个指标为对账基准？谁负责口径确认？");
+        if (context.relationships().isEmpty()) {
+            questions.add("需求涉及跨表 JOIN 时，使用哪条经过确认的实体关系与去重键？");
+        }
 
         List<String> risks = new ArrayList<>();
         if (context.terms().isEmpty()) {
@@ -290,6 +406,12 @@ public class SemanticService {
         }
         risks.add("历史 SQL 可能包含旧口径或临时过滤条件，不能直接当作正式业务定义。");
         risks.add("跨实体 JOIN 可能存在一对多放大；需要先确认事实表粒度与去重规则。");
+        if (context.relationships().isEmpty()) {
+            risks.add("语义层尚未定义实体关系，Agent 可能自行猜测 JOIN 路径。");
+        }
+        if (context.verifiedQueries().isEmpty()) {
+            risks.add("缺少已验证 Q→SQL，生成 SQL 的准确率与可回归性不足。");
+        }
 
         String prompt = buildDesignPrompt(request, context, assetsToUse, angles, questions, risks);
         return new SemanticDtos.DesignView(
@@ -298,6 +420,8 @@ public class SemanticService {
                 context.entities(),
                 context.metrics(),
                 context.terms(),
+                context.relationships(),
+                context.verifiedQueries(),
                 angles,
                 questions,
                 risks,
@@ -543,6 +667,26 @@ public class SemanticService {
                 context.metrics().stream().map(m -> m.displayName() + " = " + nullToEmpty(m.businessDefinition())).toList() + "\n");
         prompt.append("\n## 已匹配术语\n").append(context.terms().isEmpty() ? "无\n" :
                 context.terms().stream().map(t -> t.term() + ": " + nullToEmpty(t.definition())).toList() + "\n");
+        prompt.append("\n## 实体关系（Ontology）\n");
+        if (context.relationships().isEmpty()) {
+            prompt.append("无\n");
+        } else {
+            for (SemanticDtos.RelationshipView relationship : context.relationships()) {
+                prompt.append("- ").append(nullToEmpty(relationship.fromEntityName()))
+                        .append(" -> ").append(nullToEmpty(relationship.toEntityName()))
+                        .append(" [").append(relationship.relationshipType()).append("] ")
+                        .append(relationship.joinCondition()).append('\n');
+            }
+        }
+        prompt.append("\n## 已验证 Q→SQL\n");
+        if (context.verifiedQueries().isEmpty()) {
+            prompt.append("无\n");
+        } else {
+            for (com.dataagent.web.dto.VerifiedQueryDtos.View verified : context.verifiedQueries()) {
+                prompt.append("- 问题: ").append(verified.question())
+                        .append(" | SQL: ").append(truncate(verified.sqlText(), 500)).append('\n');
+            }
+        }
         prompt.append("\n## 团队知识库关联\n").append(context.knowledge().isEmpty() ? "无\n" :
                 context.knowledge().stream().map(k -> "- " + k.title() + ": " + nullToEmpty(k.problem())).toList() + "\n");
         prompt.append("\n## 历史 SQL 资产\n");

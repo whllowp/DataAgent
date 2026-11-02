@@ -108,6 +108,31 @@ public class SemanticController {
         semantic.deleteTerm(id);
     }
 
+    @GetMapping("/relationships")
+    public List<SemanticDtos.RelationshipView> relationships(
+            @RequestParam(required = false, name = "q") String query) {
+        return semantic.listRelationships(query);
+    }
+
+    @PostMapping("/relationships")
+    @ResponseStatus(HttpStatus.CREATED)
+    public SemanticDtos.RelationshipView createRelationship(
+            @Valid @RequestBody SemanticDtos.RelationshipRequest request) {
+        return semantic.createRelationship(request);
+    }
+
+    @PutMapping("/relationships/{id}")
+    public SemanticDtos.RelationshipView updateRelationship(
+            @PathVariable UUID id, @Valid @RequestBody SemanticDtos.RelationshipRequest request) {
+        return semantic.updateRelationship(id, request);
+    }
+
+    @DeleteMapping("/relationships/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteRelationship(@PathVariable UUID id) {
+        semantic.deleteRelationship(id);
+    }
+
     @GetMapping("/context")
     public SemanticDtos.SemanticContext context(@RequestParam(required = false, name = "q") String query,
                                                 @RequestParam(required = false) String domain) {

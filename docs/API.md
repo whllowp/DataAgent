@@ -550,9 +550,33 @@ X-User-Id: zhangsan
 }
 ```
 
+### 实体关系（Ontology）
+
+| Method | Path |
+| --- | --- |
+| GET | `/api/semantic/relationships?q=` |
+| POST | `/api/semantic/relationships` |
+| PUT | `/api/semantic/relationships/{id}` |
+| DELETE | `/api/semantic/relationships/{id}` |
+
+```json
+{
+  "name": "sales_order_customer",
+  "fromEntityId": "...",
+  "toEntityId": "...",
+  "relationshipType": "MANY_TO_ONE",
+  "joinCondition": "sales_orders.customer_id = customers.id",
+  "description": "每笔订单属于一个客户",
+  "synonyms": "订单客户,order_customer",
+  "owner": "data-team",
+  "tags": "核心关系,销售",
+  "status": "ACTIVE"
+}
+```
+
 ### `GET /api/semantic/context?q=GMV%20成交额&domain=销售`
 
-返回匹配的实体/指标/术语，以及通过 AUTO/MANUAL 关联找到的知识条目和 SQL 资产。
+返回匹配的实体/指标/术语、实体关系、已验证 Q→SQL，以及通过 AUTO/MANUAL 关联找到的知识条目和 SQL 资产。
 
 ### `POST /api/semantic/design`
 
@@ -611,7 +635,76 @@ X-User-Id: zhangsan
 }
 ```
 
-## 9. 运维可观测与 SRE 基准
+## 9. 已验证查询（Verified Queries）
+
+人工审核的 Q→SQL，作为语义层的 few-shot 示例和回归基线。
+
+### `GET /api/verified-queries?q=`
+
+```json
+[
+  {
+    "id": "...",
+    "question": "按城市统计大促 GMV",
+    "sqlText": "SELECT c.city, SUM(o.amount) AS gmv ...",
+    "datasourceId": "...",
+    "metricId": "...",
+    "entityId": "...",
+    "tags": "GMV,城市,大促",
+    "status": "VERIFIED",
+    "owner": "demo",
+    "notes": "日期使用半开区间",
+    "expectedColumns": "CITY,GMV",
+    "useCount": 2,
+    "lastValidatedAt": "...",
+    "lastValidationStatus": "SUCCESS",
+    "lastDurationMs": 42,
+    "lastError": null,
+    "createdAt": "...",
+    "updatedAt": "..."
+  }
+]
+```
+
+### `POST /api/verified-queries`
+
+```json
+{
+  "question": "按城市统计大促 GMV",
+  "sqlText": "SELECT ...",
+  "datasourceId": "...",
+  "metricId": "...",
+  "entityId": "...",
+  "tags": "GMV,城市",
+  "status": "VERIFIED",
+  "owner": "data-team",
+  "notes": "口径说明"
+}
+```
+
+### `PUT /api/verified-queries/{id}` / `DELETE /api/verified-queries/{id}`
+
+更新 / 删除。
+
+### `POST /api/verified-queries/{id}/validate`
+
+只读执行 SQL，记录 `lastValidationStatus / lastDurationMs / expectedColumns / lastError`。
+
+```json
+{
+  "query": { "...": "view" },
+  "success": true,
+  "rowCount": 12,
+  "durationMs": 42,
+  "message": null
+}
+```
+
+### `POST /api/verified-queries/{id}/use`
+
+使用次数 +1，返回最新 view。
+
+## 10. 运维可观测与 SRE 基准
 
 ### `GET /api/ops/overview`
 
@@ -689,7 +782,7 @@ Prometheus 指标：
 
 定时执行由 `dataagent.benchmark.sync-*` 控制，默认 1 小时；本地可用 `scripts/verify-benchmark-scheduler.ps1` 验证。
 
-## 10. 优化
+## 11. 优化
 
 ### `POST /api/optimize/analyze`
 
@@ -778,7 +871,7 @@ Prometheus 指标：
 { "prompt": "...", "guardrails": ["..."] }
 ```
 
-## 11. 错误码
+## 12. 错误码
 
 | HTTP | code | 说明 |
 | --- | --- | --- |
@@ -789,7 +882,7 @@ Prometheus 指标：
 | 502 | `UPSTREAM_ERROR` | 上游/数据库错误（部分场景返回 200 + status=ERROR） |
 | 500 | `INTERNAL_ERROR` | 未预期异常 |
 
-## 12. curl 速查
+## 13. curl 速查
 
 ```bash
 TOKEN=dataagent-dev-token
@@ -826,4 +919,10 @@ curl -s "$BASE/api/benchmarks" -H "X-API-Key: $TOKEN"
 curl -s -X POST "$BASE/api/benchmarks/run" -H "X-API-Key: $TOKEN"
 
 curl -s "$BASE/actuator/prometheus" | grep dataagent_
+
+curl -s "$BASE/api/semantic/relationships?q=订单" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/verified-queries?q=GMV" -H "X-API-Key: $TOKEN"
+
+curl -s -X POST "$BASE/api/verified-queries/<id>/validate" -H "X-API-Key: $TOKEN"
 ```

@@ -3,7 +3,7 @@
 DataAgent 不 fork DSH，而是交付一个 **bundle**：
 
 - `dsh.client`：向 DSH Web UI 注册 `DataAgent SQL` 主面板和侧边栏入口；
-- `dsh.bundle.patch`：同时插入一个 `@deepseek-ai/dsh-mcp-client` 行，把 21 个工具挂到当前 profile。
+- `dsh.bundle.patch`：同时插入一个 `@deepseek-ai/dsh-mcp-client` 行，把 24 个工具挂到当前 profile。
 
 这样 DSH 升级不会覆盖你的改动，卸载也只需移除 bundle。
 
@@ -162,7 +162,7 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
 ) -join "`n" | node E:\DataAgent\dataagent\mcp-server\server.js
 ```
 
-应看到 `initialize` 与 21 个工具的 JSON 响应。工具调用示例：
+应看到 `initialize` 与 24 个工具的 JSON 响应。工具调用示例：
 
 ```json
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"dataagent_explain_sql","arguments":{"sql":"SELECT * FROM customers LIMIT 5"}}}
@@ -179,6 +179,9 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
 | `dataagent_sync_semantic` | 手动触发语义层 ↔ 知识库同步 |
 | `dataagent_add_semantic_term` | 沉淀业务术语 |
 | `dataagent_add_semantic_metric` | 沉淀指标口径 |
+| `dataagent_search_verified_queries` | 检索已审核 Q→SQL |
+| `dataagent_add_verified_query` | 沉淀已验证 Q→SQL |
+| `dataagent_validate_verified_query` | 只读回归验证 |
 | `dataagent_ops_overview` | 查询运维可观测概览 |
 | `dataagent_run_sre_benchmarks` | 运行 SRE 基准用例 |
 

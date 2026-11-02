@@ -446,6 +446,53 @@ const tools = [
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     handler: () => api('/api/benchmarks/run', { method: 'POST' }),
   },
+  {
+    name: 'dataagent_search_verified_queries',
+    description: '检索已审核的 Q→SQL（verified queries），作为语义层和少样本示例，提升生成 SQL 的准确率。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '业务问题 / SQL / 标签关键词' },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => {
+      const params = new URLSearchParams();
+      if (args.query) params.set('q', args.query);
+      return api(`/api/verified-queries?${params.toString()}`);
+    },
+  },
+  {
+    name: 'dataagent_add_verified_query',
+    description: '沉淀一条经过人工确认的 Q→SQL，供后续 NL2SQL、语义上下文和回归验证复用。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string' },
+        sqlText: { type: 'string' },
+        datasourceId: { type: 'string' },
+        metricId: { type: 'string' },
+        entityId: { type: 'string' },
+        tags: { type: 'string' },
+        notes: { type: 'string' },
+      },
+      required: ['question', 'sqlText'],
+      additionalProperties: false,
+    },
+    handler: (args) => api('/api/verified-queries', { method: 'POST', body: args }),
+  },
+  {
+    name: 'dataagent_validate_verified_query',
+    description: '只读执行一条已验证查询并记录结果、列名和耗时；用于回归验证语义层口径是否失效。',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string' } },
+      required: ['id'],
+      additionalProperties: false,
+    },
+    handler: (args) => api(`/api/verified-queries/${encodeURIComponent(args.id)}/validate`, { method: 'POST' }),
+  },
 ];
 
 async function firstDatasourceId() {

@@ -285,6 +285,8 @@ export function SqlStudio({ embedded = false }) {
   const [semanticEntities, setSemanticEntities] = React.useState([]);
   const [semanticMetrics, setSemanticMetrics] = React.useState([]);
   const [semanticTerms, setSemanticTerms] = React.useState([]);
+  const [semanticRelationships, setSemanticRelationships] = React.useState([]);
+  const [verifiedQueries, setVerifiedQueries] = React.useState([]);
   const [semanticLoading, setSemanticLoading] = React.useState(false);
   const [semanticQuery, setSemanticQuery] = React.useState('');
   const [semanticSubTab, setSemanticSubTab] = React.useState('entities');
@@ -513,20 +515,36 @@ export function SqlStudio({ embedded = false }) {
   async function loadSemantic(query = semanticQuery) {
     setSemanticLoading(true);
     try {
-      const [overview, entities, metrics, terms] = await Promise.all([
+      const [overview, entities, metrics, terms, relationships, verified] = await Promise.all([
         api.semanticOverview(),
         api.semanticEntities(query),
         api.semanticMetrics(query),
         api.semanticTerms(query),
+        api.semanticRelationships(query),
+        api.verifiedQueries(query),
       ]);
       setSemanticOverview(overview);
       setSemanticEntities(entities || []);
       setSemanticMetrics(metrics || []);
       setSemanticTerms(terms || []);
+      setSemanticRelationships(relationships || []);
+      setVerifiedQueries(verified || []);
     } catch (error) {
       showToast(error.message, 'error');
     } finally {
       setSemanticLoading(false);
+    }
+  }
+
+  async function validateVerifiedQuery(id) {
+    try {
+      const result = await api.validateVerifiedQuery(id);
+      showToast(result.success
+        ? `验证通过：${result.rowCount} 行 / ${formatDuration(result.durationMs)}`
+        : `验证失败：${result.message || '未知错误'}`, result.success ? 'success' : 'error');
+      await loadSemantic();
+    } catch (error) {
+      showToast(error.message, 'error');
     }
   }
 
@@ -1221,6 +1239,8 @@ export function SqlStudio({ embedded = false }) {
                 entities={semanticEntities}
                 metrics={semanticMetrics}
                 terms={semanticTerms}
+                relationships={semanticRelationships}
+                verifiedQueries={verifiedQueries}
                 loading={semanticLoading}
                 query={semanticQuery}
                 setQuery={setSemanticQuery}
@@ -1237,6 +1257,7 @@ export function SqlStudio({ embedded = false }) {
                 designing={designing}
                 onCopy={handleCopy}
                 onOpenSql={(sql) => openSql(sql, '语义层关联 SQL')}
+                onValidateVerified={validateVerifiedQuery}
               />
             ) : null}
           </div>
@@ -1792,14 +1813,16 @@ function AssetsPanel({ items, loading, query, setQuery, onSearch, onRefresh, onO
 }
 
 function SemanticPanel({
-  overview, entities, metrics, terms, loading, query, setQuery, subTab, setSubTab,
+  overview, entities, metrics, terms, relationships, verifiedQueries, loading, query, setQuery, subTab, setSubTab,
   onSearch, onRefresh, onSync, syncing, designIdea, setDesignIdea, designResult, onDesign,
-  designing, onCopy, onOpenSql,
+  designing, onCopy, onOpenSql, onValidateVerified,
 }) {
   const subtabs = [
     ['entities', '实体', entities.length],
     ['metrics', '指标', metrics.length],
     ['terms', '术语', terms.length],
+    ['relations', '关系', relationships.length],
+    ['verified', '已验证', verifiedQueries.length],
   ];
   const demoOwned = [...entities, ...metrics, ...terms].some((item) => item.owner === 'demo');
   return (
@@ -1864,6 +1887,26 @@ function SemanticPanel({
           {designResult.risks?.map((risk, index) => (
             <div className="da-design-line risk" key={index}>! {risk}</div>
           ))}
+          {designResult.relationships?.length ? (
+            <>
+              <div className="da-kb-section-label">实体关系</div>
+              {designResult.relationships.slice(0, 4).map((relationship) => (
+                <div className="da-design-line" key={relationship.id}>
+                  • {relationship.fromEntityName} → {relationship.toEntityName}：{relationship.joinCondition}
+                </div>
+              ))}
+            </>
+          ) : null}
+          {designResult.verifiedQueries?.length ? (
+            <>
+              <div className="da-kb-section-label">已验证查询</div>
+              {designResult.verifiedQueries.slice(0, 3).map((verified) => (
+                <button className="da-design-line da-design-link" key={verified.id} onClick={() => onOpenSql(verified.sqlText)}>
+                  → {verified.question}
+                </button>
+              ))}
+            </>
+          ) : null}
           {designResult.relatedKnowledge?.length ? (
             <>
               <div className="da-kb-section-label">关联知识</div>
@@ -1953,9 +1996,49 @@ function SemanticPanel({
         </div>
       )) : null}
 
+      {!loading && subTab === 'relations' ? relationships.map((relationship) => (
+        <div className="da-kb-card" key={relationship.id}>
+          <div className="da-kb-title">{relationship.name} <span className="da-status ok">{relationship.relationshipType}</span></div>
+          <div className="da-kb-problem">
+            {relationship.fromEntityName || relationship.fromEntityId}
+            {' → '}
+            {relationship.toEntityName || relationship.toEntityId}
+          </div>
+          <pre className="da-kb-sql">{relationship.joinCondition}</pre>
+          {relationship.description ? <div className="da-hint">{relationship.description}</div> : null}
+          <div className="da-tags">
+            {relationship.status ? <span className="da-tag">{relationship.status}</span> : null}
+            {relationship.synonyms ? <span className="da-tag">同义词：{relationship.synonyms}</span> : null}
+          </div>
+        </div>
+      )) : null}
+
+      {!loading && subTab === 'verified' ? verifiedQueries.map((verified) => (
+        <div className="da-kb-card" key={verified.id}>
+          <div className="da-kb-title">
+            {verified.question}
+            <span className={`da-status ${verified.status === 'VERIFIED' ? 'ok' : 'warn'}`}>{verified.status}</span>
+          </div>
+          <pre className="da-kb-sql">{verified.sqlText}</pre>
+          <div className="da-list-meta">
+            <span>使用 {verified.useCount}</span>
+            {verified.lastValidationStatus ? <span>最近 {verified.lastValidationStatus}</span> : <span>未验证</span>}
+            {verified.lastDurationMs != null ? <span>{formatDuration(verified.lastDurationMs)}</span> : null}
+          </div>
+          <div className="da-kb-actions">
+            <button className="da-btn small ghost" onClick={() => onOpenSql(verified.sqlText)}>载入 SQL</button>
+            <button className="da-btn small accent" onClick={() => onValidateVerified(verified.id)}>
+              <Icon name="check" size={10} /> 验证
+            </button>
+          </div>
+        </div>
+      )) : null}
+
       {!loading && ((subTab === 'entities' && !entities.length)
         || (subTab === 'metrics' && !metrics.length)
-        || (subTab === 'terms' && !terms.length)) ? (
+        || (subTab === 'terms' && !terms.length)
+        || (subTab === 'relations' && !relationships.length)
+        || (subTab === 'verified' && !verifiedQueries.length)) ? (
         <div className="da-tree-empty">语义层暂无匹配内容。可通过 API 新增，或点击“同步知识”建立关联。</div>
       ) : null}
     </div>

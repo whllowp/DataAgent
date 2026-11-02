@@ -1,6 +1,7 @@
 package com.dataagent.web.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.time.Instant;
@@ -116,11 +117,46 @@ public final class SemanticDtos {
     ) {
     }
 
+    public record RelationshipView(
+            UUID id,
+            String name,
+            UUID fromEntityId,
+            String fromEntityName,
+            UUID toEntityId,
+            String toEntityName,
+            String relationshipType,
+            String joinCondition,
+            String description,
+            String synonyms,
+            String owner,
+            String tags,
+            String status,
+            Instant createdAt,
+            Instant updatedAt
+    ) {
+    }
+
+    public record RelationshipRequest(
+            @NotBlank @Size(max = 160) String name,
+            @NotNull UUID fromEntityId,
+            @NotNull UUID toEntityId,
+            @NotBlank @Size(max = 40) String relationshipType,
+            @NotBlank @Size(max = 8000) String joinCondition,
+            @Size(max = 8000) String description,
+            @Size(max = 1000) String synonyms,
+            @Size(max = 120) String owner,
+            @Size(max = 500) String tags,
+            @Size(max = 20) String status
+    ) {
+    }
+
     public record SemanticContext(
             String query,
             List<EntityView> entities,
             List<MetricView> metrics,
             List<TermView> terms,
+            List<RelationshipView> relationships,
+            List<VerifiedQueryDtos.View> verifiedQueries,
             List<KnowledgeDtos.KnowledgeView> knowledge,
             List<SqlAssetDtos.SqlAssetView> assets
     ) {
@@ -139,6 +175,8 @@ public final class SemanticDtos {
             List<EntityView> entities,
             List<MetricView> metrics,
             List<TermView> terms,
+            List<RelationshipView> relationships,
+            List<VerifiedQueryDtos.View> verifiedQueries,
             List<String> designAngles,
             List<String> questions,
             List<String> risks,

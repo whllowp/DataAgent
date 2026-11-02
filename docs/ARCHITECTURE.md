@@ -28,7 +28,7 @@ flowchart TB
     direction TB
     Panel["DataAgent SQL 面板<br/>Schema 树 / 编辑器 / 结果 / 历史 / 知识库"]
     DSH["DSH Agent + 大模型"]
-    MCP["MCP stdio bridge<br/>21 个 dataagent_* 工具"]
+    MCP["MCP stdio bridge<br/>24 个 dataagent_* 工具"]
     Panel -->|"HTTPS / REST"| Gateway
     DSH -->|"tool call"| MCP
     MCP -->|"HTTPS / REST"| Gateway
@@ -289,6 +289,28 @@ EXPLAIN <sql>
 - 基准执行复用只读 SQL 网关，因此自动写入执行历史和 SQL 资产，下一轮语义同步可关联到 SRE 实体/指标/术语；
 - 内置 3 条演示基准（可用性、错误率、P95 延迟），`owner=demo` 的语义定义仍为 DRAFT。
 
+### 3.14 Ontology 实体关系
+
+`semantic_relationship` 把实体间的 join 路径显式化：
+
+- `from_entity_id` / `to_entity_id`
+- `relationship_type`：ONE_TO_ONE / ONE_TO_MANY / MANY_TO_ONE / MANY_TO_MANY
+- `join_condition`：真实列条件，如 `sales_orders.customer_id = customers.id`
+- `description` / `synonyms` / `owner` / `status`
+
+`SemanticService.context` 会返回命中实体的关系；设计助手在 Prompt 中明确 join 路径、基数和一对多放大风险，禁止模型猜 JOIN。
+
+### 3.15 Verified Query 目录
+
+`verified_query` 保存人工审核的 Q→SQL：
+
+- 问题、SQL、数据源、关联指标/实体、标签、owner、notes
+- 状态、最近验证状态/耗时/错误、使用次数
+- `POST /api/verified-queries/{id}/validate` 复用只读网关执行并记录结果
+- 语义上下文与设计助手会带出相关已验证查询，作为 few-shot 示例与回归基线
+
+> 业界参考见 [INDUSTRY-BENCHMARK.md](INDUSTRY-BENCHMARK.md)。
+
 ## 4. 数据模型
 
 ```mermaid
@@ -379,6 +401,11 @@ V2 新增：
 V4 新增：
 
 - `sql_benchmark_case`：SRE/运维基准 SQL 用例、阈值和最近执行结果。
+
+V5 新增：
+
+- `semantic_relationship`：实体间 join 条件与基数。
+- `verified_query`：人工审核的 Q→SQL 目录与最近验证结果。
 
 ## 5. 关键流程
 
@@ -536,6 +563,9 @@ dsh-plugin/
 | `dataagent_add_semantic_metric` | 沉淀指标 |
 | `dataagent_ops_overview` | 运维可观测概览 |
 | `dataagent_run_sre_benchmarks` | 运行 SRE 基准 |
+| `dataagent_search_verified_queries` | 检索已验证 Q→SQL |
+| `dataagent_add_verified_query` | 沉淀已验证 Q→SQL |
+| `dataagent_validate_verified_query` | 回归验证 |
 
 所有工具最终受云端的只读网关约束；模型不能通过 MCP 绕过 `SqlGuard`。
 

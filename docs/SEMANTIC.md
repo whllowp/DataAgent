@@ -22,6 +22,8 @@
 | 指标 Metric | 可复用的业务度量 | GMV、订单量、客单价；业务定义、表达式、维度、同义词 |
 | 术语 Term | 业务词汇表 | 大促、渠道、有效订单；定义、同义词、关联实体/指标 |
 | 关联 Link | 知识/资产与语义对象的连接 | `KNOWLEDGE → METRIC`、`SQL_ASSET → ENTITY`；置信度、原因、AUTO/MANUAL |
+| 关系 Relationship | 实体之间的 join 路径与基数 | `订单→客户`、`MANY_TO_ONE`、`sales_orders.customer_id = customers.id` |
+| 已验证查询 Verified Query | 人工审核的 Q→SQL | 标准问题、SQL、关联指标/实体、验证状态与耗时 |
 
 ### 数据关系
 
@@ -61,6 +63,30 @@ erDiagram
 > 指纹会归一化空白、大小写、字符串/数字字面量，使“同一业务问题换参数”的 SQL 聚合在一起。
 
 > **演示数据声明**：内置的 GMV、客单价、订单量、有效订单、渠道、大促等定义都是示例口径，`owner=demo` 且 `status=DRAFT`。正式使用前必须由业务/数据负责人替换定义并改为 `ACTIVE`；系统会在 Studio 语义页显示 DRAFT 提醒。
+
+## 3.5 Ontology 与 Verified Query
+
+### 实体关系
+
+`semantic_relationship` 把 JOIN 路径显式化：
+
+- `from_entity_id` / `to_entity_id`
+- `relationship_type`：`ONE_TO_ONE / ONE_TO_MANY / MANY_TO_ONE / MANY_TO_MANY`
+- `join_condition`：真实列条件
+- `description`、`synonyms`、`owner`、`status`
+
+上下文检索会返回与命中实体相关的关系，设计助手在 Prompt 中明确 JOIN 路径与一对多放大风险。
+
+### 已验证查询
+
+`verified_query` 保存人工审核的 Q→SQL：
+
+- 问题、SQL、数据源、指标/实体、标签、owner、notes
+- `status`：`VERIFIED / DRAFT / DEPRECATED`
+- 最近验证状态、耗时、错误、使用次数
+- `POST /api/verified-queries/{id}/validate` 只读执行并记录结果
+
+它既可作为 few-shot 示例，也可作为语义层口径的回归基线。语义上下文和设计助手会自动带出相关 verified queries。
 
 ## 4. 设计助手
 

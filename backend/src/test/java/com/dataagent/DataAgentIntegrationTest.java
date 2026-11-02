@@ -14,6 +14,7 @@ import com.dataagent.service.BenchmarkService;
 import com.dataagent.service.SemanticService;
 import com.dataagent.service.SemanticSyncService;
 import com.dataagent.service.SqlAssetService;
+import com.dataagent.service.VerifiedQueryService;
 import com.dataagent.web.ApiException;
 import com.dataagent.web.dto.BenchmarkDtos;
 import com.dataagent.web.dto.HistoryDtos;
@@ -22,6 +23,7 @@ import com.dataagent.web.dto.OpsDtos;
 import com.dataagent.web.dto.SemanticDtos;
 import com.dataagent.web.dto.SqlAssetDtos;
 import com.dataagent.web.dto.SqlDtos;
+import com.dataagent.web.dto.VerifiedQueryDtos;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -74,6 +76,8 @@ class DataAgentIntegrationTest {
     private OpsService ops;
     @Autowired
     private BenchmarkService benchmarks;
+    @Autowired
+    private VerifiedQueryService verifiedQueries;
     @Autowired
     private MockMvc mockMvc;
 
@@ -186,6 +190,24 @@ class DataAgentIntegrationTest {
         OpsDtos.OpsOverview after = ops.overview();
         assertTrue(after.benchmarks().failedLastRun() == 0);
         assertNotNull(after.prometheusPath());
+    }
+
+    @Test
+    void semanticContextIncludesOntologyAndVerifiedQueries() {
+        SemanticDtos.SemanticContext context = semantic.context("GMV 城市", "销售");
+        assertFalse(context.relationships().isEmpty());
+        assertFalse(context.verifiedQueries().isEmpty());
+        assertTrue(context.verifiedQueries().stream()
+                .anyMatch(item -> item.question().contains("GMV")));
+    }
+
+    @Test
+    void validatesVerifiedQuery() {
+        VerifiedQueryDtos.View query = verifiedQueries.list("GMV").stream().findFirst().orElseThrow();
+        VerifiedQueryDtos.ValidateResult result = verifiedQueries.validate(query.id());
+        assertTrue(result.success(), result.message());
+        assertTrue(result.rowCount() > 0);
+        assertEquals("SUCCESS", verifiedQueries.get(query.id()).lastValidationStatus());
     }
 
     @Test

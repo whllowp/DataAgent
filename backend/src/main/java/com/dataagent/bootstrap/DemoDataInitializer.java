@@ -6,17 +6,21 @@ import com.dataagent.domain.KnowledgeEntry;
 import com.dataagent.domain.QueryExecution;
 import com.dataagent.domain.SemanticEntity;
 import com.dataagent.domain.SemanticMetric;
+import com.dataagent.domain.SemanticRelationship;
 import com.dataagent.domain.SemanticTerm;
 import com.dataagent.domain.SqlBenchmarkCase;
+import com.dataagent.domain.VerifiedQuery;
 import com.dataagent.repository.DatasourceRepository;
 import com.dataagent.repository.KnowledgeEntryRepository;
 import com.dataagent.repository.QueryExecutionRepository;
 import com.dataagent.repository.SemanticEntityRepository;
 import com.dataagent.repository.SemanticLinkRepository;
 import com.dataagent.repository.SemanticMetricRepository;
+import com.dataagent.repository.SemanticRelationshipRepository;
 import com.dataagent.repository.SemanticTermRepository;
 import com.dataagent.repository.SqlAssetRepository;
 import com.dataagent.repository.SqlBenchmarkCaseRepository;
+import com.dataagent.repository.VerifiedQueryRepository;
 import com.dataagent.service.SemanticSyncService;
 import com.dataagent.service.SqlAssetService;
 import org.slf4j.Logger;
@@ -56,6 +60,8 @@ public class DemoDataInitializer implements ApplicationRunner {
     private final SemanticMetricRepository semanticMetrics;
     private final SemanticTermRepository semanticTerms;
     private final SemanticLinkRepository semanticLinks;
+    private final SemanticRelationshipRepository semanticRelationships;
+    private final VerifiedQueryRepository verifiedQueries;
     private final SqlAssetService sqlAssetService;
     private final SemanticSyncService semanticSyncService;
     private final SqlBenchmarkCaseRepository benchmarks;
@@ -64,7 +70,10 @@ public class DemoDataInitializer implements ApplicationRunner {
                                QueryExecutionRepository executions, KnowledgeEntryRepository knowledge,
                                SqlAssetRepository assets, SemanticEntityRepository semanticEntities,
                                SemanticMetricRepository semanticMetrics, SemanticTermRepository semanticTerms,
-                               SemanticLinkRepository semanticLinks, SqlAssetService sqlAssetService,
+                               SemanticLinkRepository semanticLinks,
+                               SemanticRelationshipRepository semanticRelationships,
+                               VerifiedQueryRepository verifiedQueries,
+                               SqlAssetService sqlAssetService,
                                SemanticSyncService semanticSyncService,
                                SqlBenchmarkCaseRepository benchmarks) {
         this.properties = properties;
@@ -76,6 +85,8 @@ public class DemoDataInitializer implements ApplicationRunner {
         this.semanticMetrics = semanticMetrics;
         this.semanticTerms = semanticTerms;
         this.semanticLinks = semanticLinks;
+        this.semanticRelationships = semanticRelationships;
+        this.verifiedQueries = verifiedQueries;
         this.sqlAssetService = sqlAssetService;
         this.semanticSyncService = semanticSyncService;
         this.benchmarks = benchmarks;
@@ -102,6 +113,7 @@ public class DemoDataInitializer implements ApplicationRunner {
             }
         }
         seedSemanticLayer();
+        seedOntologyAndVerifiedQueries(demo);
         seedBenchmarks(demo);
         if (semanticLinks.count() == 0) {
             semanticSyncService.sync("SEED");
@@ -483,6 +495,92 @@ public class DemoDataInitializer implements ApplicationRunner {
         if (semanticTerms.findByTermIgnoreCase(termValue).isEmpty()) {
             saveTerm(termValue, definition, synonyms, entity, metric, tags);
         }
+    }
+
+    private void seedOntologyAndVerifiedQueries(Datasource demo) {
+        if (semanticRelationships.count() == 0) {
+            seedRelationship("sales_order_customer", "订单→客户", "sales_order", "customer",
+                    "MANY_TO_ONE", "sales_orders.customer_id = customers.id",
+                    "每笔订单属于一个客户；从订单聚合到客户维度时不会放大行数。",
+                    "订单客户,order_customer");
+            seedRelationship("sales_order_product", "订单→商品", "sales_order", "product",
+                    "MANY_TO_ONE", "sales_orders.product_id = products.id",
+                    "每笔订单关联一个商品；商品维度分析需注意订单数量与金额的粒度。",
+                    "订单商品,order_product");
+            seedRelationship("customer_orders", "客户→订单", "customer", "sales_order",
+                    "ONE_TO_MANY", "customers.id = sales_orders.customer_id",
+                    "一个客户可以有多笔订单；按客户聚合前需确认是否去重。",
+                    "客户订单,customer_orders");
+        }
+        if (verifiedQueries.count() == 0) {
+            seedVerifiedQuery(demo, "按城市统计大促 GMV",
+                    """
+                    SELECT c.city, SUM(o.amount) AS gmv
+                    FROM sales_orders o
+                    JOIN customers c ON c.id = o.customer_id
+                    WHERE o.status = 'PAID'
+                      AND o.order_date >= DATE '2025-01-01'
+                      AND o.order_date < DATE '2026-01-01'
+                    GROUP BY c.city
+                    ORDER BY gmv DESC
+                    """, "gmv", "sales_order", "GMV,城市,大促",
+                    "城市维度 GMV 的标准写法；日期使用半开区间，避免函数导致索引失效。");
+            seedVerifiedQuery(demo, "按渠道拆解订单量和 GMV",
+                    """
+                    SELECT channel, COUNT(DISTINCT id) AS order_count, SUM(amount) AS gmv
+                    FROM sales_orders
+                    WHERE status = 'PAID'
+                    GROUP BY channel
+                    ORDER BY gmv DESC
+                    """, "order_count", "sales_order", "订单量,GMV,渠道",
+                    "渠道对比的标准口径；COUNT(DISTINCT id) 避免重复订单。");
+            seedVerifiedQuery(demo, "客户数最多的城市",
+                    """
+                    SELECT city, COUNT(*) AS customer_count
+                    FROM customers
+                    GROUP BY city
+                    ORDER BY customer_count DESC
+                    LIMIT 10
+                    """, "customer_count", "customer", "客户数,城市",
+                    "客户数按客户主键计数；与订单 GMV 的城市口径需分别对账。");
+        }
+    }
+
+    private void seedRelationship(String name, String displayName, String fromEntityName,
+                                  String toEntityName, String type, String joinCondition,
+                                  String description, String synonyms) {
+        SemanticEntity from = semanticEntities.findByNameIgnoreCase(fromEntityName).orElse(null);
+        SemanticEntity to = semanticEntities.findByNameIgnoreCase(toEntityName).orElse(null);
+        if (from == null || to == null) {
+            return;
+        }
+        SemanticRelationship relationship = new SemanticRelationship();
+        relationship.setName(name);
+        relationship.setFromEntityId(from.getId());
+        relationship.setToEntityId(to.getId());
+        relationship.setRelationshipType(type);
+        relationship.setJoinCondition(joinCondition);
+        relationship.setDescription(description);
+        relationship.setSynonyms(synonyms);
+        relationship.setOwner("demo");
+        relationship.setTags("演示,Ontology,销售");
+        relationship.setStatus("ACTIVE");
+        semanticRelationships.save(relationship);
+    }
+
+    private void seedVerifiedQuery(Datasource demo, String question, String sql,
+                                   String metricName, String entityName, String tags, String notes) {
+        VerifiedQuery query = new VerifiedQuery();
+        query.setQuestion(question);
+        query.setSqlText(sql.strip());
+        query.setDatasourceId(demo.getId());
+        query.setMetricId(semanticMetrics.findByNameIgnoreCase(metricName).map(SemanticMetric::getId).orElse(null));
+        query.setEntityId(semanticEntities.findByNameIgnoreCase(entityName).map(SemanticEntity::getId).orElse(null));
+        query.setTags(tags);
+        query.setStatus("VERIFIED");
+        query.setOwner("demo");
+        query.setNotes(notes);
+        verifiedQueries.save(query);
     }
 
     private void seedBenchmarks(Datasource demo) {

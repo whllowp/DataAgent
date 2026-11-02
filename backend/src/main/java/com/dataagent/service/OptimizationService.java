@@ -189,6 +189,7 @@ public class OptimizationService {
         prompt.append("- dataagent_search_knowledge: 检索团队已沉淀的相似问题\n");
         prompt.append("- dataagent_search_sql_assets: 检索历史 SQL 与业务问题\n");
         prompt.append("- dataagent_semantic_context: 查询实体、指标、术语及关联知识\n");
+        prompt.append("- dataagent_search_verified_queries: 检索已审核的 Q→SQL 示例\n");
         prompt.append("- dataagent_suggest_design: 为新特性/新业务生成设计思路\n");
         prompt.append("- dataagent_describe_table: 查看表结构、索引与字段类型\n");
         prompt.append("- dataagent_execute_sql: 只读执行，用于抽样验证\n\n");
