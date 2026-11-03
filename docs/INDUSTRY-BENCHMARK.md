@@ -14,7 +14,8 @@
 | 计划与工具调用 | 规划、取数、解释、校验、对比 | DSH + MCP 工具链已有；新增 verified query 工具 |
 | 可观测 | 查询耗时、失败、慢查询、连接池、调度 | 已有 `/api/ops/overview` 与 Prometheus |
 | 评测 / 回归 | Golden questions、AI evals、结果对账 | 已有 SRE 基准；NL2SQL 评测仍是下一步 |
-| 反馈闭环 | 点赞/点踩、纠错、沉淀为 verified query | 本轮提供 verified query 沉淀 API/MCP；反馈表待补 |
+| 反馈闭环 | 点赞/点踩、纠错、沉淀为 verified query | 已提供 verified query 沉淀 API/MCP；反馈表待补 |
+| 长期记忆 | 跨会话偏好/决策/事实、记忆强化、提升为知识 | 本轮新增 **agent_memory + 知识提升** |
 | 治理 | 权限、审计、PII、只读、成本上限 | 只读网关 + Token；RBAC/行级权限待补 |
 
 ## 2. 本轮落地
@@ -55,12 +56,22 @@
 
 - `relationships`：实体关系与 join 条件
 - `verifiedQueries`：相关已验证 Q→SQL
+- `memories`：GLOBAL/业务域/问题相关的长期记忆
 
-设计 Prompt 增加「实体关系（Ontology）」「已验证 Q→SQL」两节，并明确：
+设计 Prompt 增加「实体关系（Ontology）」「已验证 Q→SQL」「长期记忆」三节，并明确：
 
 - 一对多 JOIN 可能放大；
 - 缺少关系时不能猜 join；
-- 缺少 verified query 时准确率与可回归性不足。
+- 缺少 verified query 时准确率与可回归性不足；
+- 已确认的偏好/决策应优先复用，不要重复询问。
+
+### 2.4 长期记忆与知识沉淀
+
+- `agent_memory` 支持 PREFERENCE / DECISION / FACT / PATTERN / OPEN_QUESTION
+- 同一 scope+key 强化而非重复
+- `promoteToKnowledge=true` 可一键创建知识库条目
+- 每日归档过期记忆，保留审计
+- MCP 提供 search/remember/overview
 
 ## 3. 下一步优先级
 

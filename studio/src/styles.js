@@ -1547,11 +1547,13 @@ body.da-standalone .da-app {
 .da-sem-subtabs button {
   flex: 1;
   height: 25px;
+  padding: 0 2px;
   border: 0;
   border-radius: 5px;
   background: transparent;
   color: var(--da-muted);
   font-size: 10.5px;
+  white-space: nowrap;
 }
 
 .da-sem-subtabs button.active {

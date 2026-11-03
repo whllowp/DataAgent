@@ -18,6 +18,7 @@ import com.dataagent.repository.SemanticTermRepository;
 import com.dataagent.repository.SqlAssetRepository;
 import com.dataagent.web.ApiException;
 import com.dataagent.web.dto.KnowledgeDtos;
+import com.dataagent.web.dto.MemoryDtos;
 import com.dataagent.web.dto.SemanticDtos;
 import com.dataagent.web.dto.SqlAssetDtos;
 import org.springframework.data.domain.PageRequest;
@@ -51,13 +52,15 @@ public class SemanticService {
     private final KnowledgeService knowledgeService;
     private final SqlAssetService sqlAssetService;
     private final VerifiedQueryService verifiedQueries;
+    private final MemoryService memoryService;
 
     public SemanticService(SemanticEntityRepository entities, SemanticMetricRepository metrics,
                            SemanticTermRepository terms, SemanticLinkRepository links,
                            SemanticRelationshipRepository relationships,
                            SemanticSyncRunRepository syncRuns, KnowledgeEntryRepository knowledge,
                            SqlAssetRepository assets, KnowledgeService knowledgeService,
-                           SqlAssetService sqlAssetService, VerifiedQueryService verifiedQueries) {
+                           SqlAssetService sqlAssetService, VerifiedQueryService verifiedQueries,
+                           MemoryService memoryService) {
         this.entities = entities;
         this.metrics = metrics;
         this.terms = terms;
@@ -69,6 +72,7 @@ public class SemanticService {
         this.knowledgeService = knowledgeService;
         this.sqlAssetService = sqlAssetService;
         this.verifiedQueries = verifiedQueries;
+        this.memoryService = memoryService;
     }
 
     @Transactional(readOnly = true)
@@ -320,6 +324,7 @@ public class SemanticService {
         List<SemanticDtos.RelationshipView> relationshipViews = relationshipsForEntities(entityIds);
         List<com.dataagent.web.dto.VerifiedQueryDtos.View> verified = verifiedQueries.context(
                 query, metricIds, entityIds);
+        List<MemoryDtos.MemoryView> memoryViews = memoryService.context(query, domain, null, null);
 
         Set<UUID> knowledgeIds = new LinkedHashSet<>();
         Set<UUID> assetIds = new LinkedHashSet<>();
@@ -338,7 +343,7 @@ public class SemanticService {
 
         return new SemanticDtos.SemanticContext(
                 query, matchedEntities, matchedMetrics, matchedTerms, relationshipViews, verified,
-                linkedKnowledge, linkedAssets);
+                memoryViews, linkedKnowledge, linkedAssets);
     }
 
     @Transactional(readOnly = true)
@@ -378,6 +383,10 @@ public class SemanticService {
         if (!context.verifiedQueries().isEmpty()) {
             angles.add("已验证查询：优先参考 " + context.verifiedQueries().size()
                     + " 条已审核 Q→SQL，保持筛选条件、粒度和输出列一致。");
+        }
+        if (!context.memories().isEmpty()) {
+            angles.add("长期记忆：复用 " + context.memories().size()
+                    + " 条已沉淀的偏好/决策/事实，避免重复询问或推翻已确认口径。");
         }
         angles.add("维度切分：至少定义时间、组织/区域、产品/渠道等常用维度，并说明哪些维度不能下钻。");
         angles.add("数据质量与权限：明确迟到数据、去重、退款/取消、NULL 语义，以及字段级权限与脱敏。");
@@ -422,6 +431,7 @@ public class SemanticService {
                 context.terms(),
                 context.relationships(),
                 context.verifiedQueries(),
+                context.memories(),
                 angles,
                 questions,
                 risks,
@@ -685,6 +695,16 @@ public class SemanticService {
             for (com.dataagent.web.dto.VerifiedQueryDtos.View verified : context.verifiedQueries()) {
                 prompt.append("- 问题: ").append(verified.question())
                         .append(" | SQL: ").append(truncate(verified.sqlText(), 500)).append('\n');
+            }
+        }
+        prompt.append("\n## 长期记忆\n");
+        if (context.memories().isEmpty()) {
+            prompt.append("无\n");
+        } else {
+            for (MemoryDtos.MemoryView memory : context.memories()) {
+                prompt.append("- [").append(memory.kind()).append("] ")
+                        .append(memory.memoryKey()).append(": ")
+                        .append(truncate(memory.content(), 600)).append('\n');
             }
         }
         prompt.append("\n## 团队知识库关联\n").append(context.knowledge().isEmpty() ? "无\n" :

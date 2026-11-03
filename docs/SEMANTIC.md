@@ -88,6 +88,10 @@ erDiagram
 
 它既可作为 few-shot 示例，也可作为语义层口径的回归基线。语义上下文和设计助手会自动带出相关 verified queries。
 
+### 长期记忆
+
+`GET /api/semantic/context` 和设计助手还会带出 GLOBAL、当前业务域及 token 匹配的长期记忆（偏好、决策、事实、SQL 模式、待确认问题）。详见 [MEMORY.md](MEMORY.md)。
+
 ## 4. 设计助手
 
 ### 输入

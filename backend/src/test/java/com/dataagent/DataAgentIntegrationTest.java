@@ -11,6 +11,7 @@ import com.dataagent.service.JdbcQueryService;
 import com.dataagent.service.OptimizationService;
 import com.dataagent.service.OpsService;
 import com.dataagent.service.BenchmarkService;
+import com.dataagent.service.MemoryService;
 import com.dataagent.service.SemanticService;
 import com.dataagent.service.SemanticSyncService;
 import com.dataagent.service.SqlAssetService;
@@ -18,6 +19,7 @@ import com.dataagent.service.VerifiedQueryService;
 import com.dataagent.web.ApiException;
 import com.dataagent.web.dto.BenchmarkDtos;
 import com.dataagent.web.dto.HistoryDtos;
+import com.dataagent.web.dto.MemoryDtos;
 import com.dataagent.web.dto.OptimizeDtos;
 import com.dataagent.web.dto.OpsDtos;
 import com.dataagent.web.dto.SemanticDtos;
@@ -78,6 +80,8 @@ class DataAgentIntegrationTest {
     private BenchmarkService benchmarks;
     @Autowired
     private VerifiedQueryService verifiedQueries;
+    @Autowired
+    private MemoryService memories;
     @Autowired
     private MockMvc mockMvc;
 
@@ -208,6 +212,33 @@ class DataAgentIntegrationTest {
         assertTrue(result.success(), result.message());
         assertTrue(result.rowCount() > 0);
         assertEquals("SUCCESS", verifiedQueries.get(query.id()).lastValidationStatus());
+    }
+
+    @Test
+    void memoryUpsertsReinforcesAndPromotesKnowledge() {
+        String key = "test.memory." + System.nanoTime();
+        MemoryDtos.CaptureResult first = memories.capture(new MemoryDtos.CaptureRequest(
+                "GLOBAL", null, "PREFERENCE", key, "默认按支付成功订单统计 GMV",
+                "USER", 70, 50, "test", "tester", null, false, null, null));
+        MemoryDtos.CaptureResult second = memories.capture(new MemoryDtos.CaptureRequest(
+                "GLOBAL", null, "PREFERENCE", key, "默认按支付成功订单统计 GMV，日期半开区间",
+                "USER", 80, 60, "test", "tester", null, false, null, null));
+        assertEquals(first.memory().id(), second.memory().id());
+        assertEquals(2, second.memory().reinforcementCount());
+
+        String promoteKey = "test.memory.promote." + System.nanoTime();
+        MemoryDtos.CaptureResult promoted = memories.capture(new MemoryDtos.CaptureRequest(
+                "GLOBAL", null, "DECISION", promoteKey, "客户数按客户主键去重",
+                "USER", 85, 70, "test", "tester", null, true,
+                "测试长期记忆知识", "SELECT COUNT(*) FROM customers"));
+        assertNotNull(promoted.knowledge());
+        assertEquals(promoted.knowledge().id(), promoted.memory().knowledgeId());
+    }
+
+    @Test
+    void semanticContextIncludesLongTermMemory() {
+        assertFalse(semantic.context("GMV 城市", "销售").memories().isEmpty());
+        assertTrue(memories.overview().total() >= 4);
     }
 
     @Test

@@ -28,7 +28,7 @@ flowchart TB
     direction TB
     Panel["DataAgent SQL 面板<br/>Schema 树 / 编辑器 / 结果 / 历史 / 知识库"]
     DSH["DSH Agent + 大模型"]
-    MCP["MCP stdio bridge<br/>24 个 dataagent_* 工具"]
+    MCP["MCP stdio bridge<br/>27 个 dataagent_* 工具"]
     Panel -->|"HTTPS / REST"| Gateway
     DSH -->|"tool call"| MCP
     MCP -->|"HTTPS / REST"| Gateway
@@ -311,6 +311,18 @@ EXPLAIN <sql>
 
 > 业界参考见 [INDUSTRY-BENCHMARK.md](INDUSTRY-BENCHMARK.md)。
 
+### 3.16 长期记忆
+
+`agent_memory` 保存跨会话的长期记忆：
+
+- 作用域：GLOBAL / DOMAIN / DATASOURCE / USER
+- 类型：PREFERENCE / DECISION / FACT / PATTERN / OPEN_QUESTION
+- 同一 `scope + scopeKey + key` 强化已有记忆（confidence、reinforcementCount、updatedAt）
+- 支持过期时间、归档、使用次数
+- `promoteToKnowledge=true` 时创建 `knowledge_entry` 并记录 `knowledge_id`
+
+`MemoryService.context` 会把 GLOBAL、当前业务域和 token 匹配的记忆注入语义上下文/设计 Prompt；每日 03:15 归档过期记忆。详细设计见 [MEMORY.md](MEMORY.md)。
+
 ## 4. 数据模型
 
 ```mermaid
@@ -406,6 +418,10 @@ V5 新增：
 
 - `semantic_relationship`：实体间 join 条件与基数。
 - `verified_query`：人工审核的 Q→SQL 目录与最近验证结果。
+
+V6 新增：
+
+- `agent_memory`：长期记忆、作用域、置信度、强化次数、知识提升关联。
 
 ## 5. 关键流程
 
@@ -566,6 +582,9 @@ dsh-plugin/
 | `dataagent_search_verified_queries` | 检索已验证 Q→SQL |
 | `dataagent_add_verified_query` | 沉淀已验证 Q→SQL |
 | `dataagent_validate_verified_query` | 回归验证 |
+| `dataagent_search_memory` | 检索长期记忆 |
+| `dataagent_remember` | 沉淀长期记忆/提升知识 |
+| `dataagent_memory_overview` | 记忆概览 |
 
 所有工具最终受云端的只读网关约束；模型不能通过 MCP 绕过 `SqlGuard`。
 

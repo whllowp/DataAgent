@@ -704,7 +704,90 @@ X-User-Id: zhangsan
 
 使用次数 +1，返回最新 view。
 
-## 10. 运维可观测与 SRE 基准
+## 10. 长期记忆
+
+### `GET /api/memory?q=&scope=&kind=&status=`
+
+返回长期记忆，按 importance/updatedAt 排序。
+
+```json
+[
+  {
+    "id": "...",
+    "scope": "DOMAIN",
+    "scopeKey": "销售",
+    "kind": "DECISION",
+    "memoryKey": "aov.denominator",
+    "content": "客单价分母使用支付客户数",
+    "source": "USER",
+    "confidence": 80,
+    "importance": 70,
+    "status": "ACTIVE",
+    "tags": "客单价,客户数",
+    "owner": "demo",
+    "useCount": 0,
+    "reinforcementCount": 1,
+    "knowledgeId": null,
+    "createdAt": "...",
+    "updatedAt": "..."
+  }
+]
+```
+
+### `POST /api/memory`
+
+```json
+{
+  "scope": "DOMAIN",
+  "scopeKey": "销售",
+  "kind": "DECISION",
+  "key": "aov.denominator",
+  "content": "客单价分母使用支付客户数",
+  "source": "USER",
+  "confidence": 80,
+  "importance": 70,
+  "tags": "客单价,客户数",
+  "promoteToKnowledge": false,
+  "knowledgeTitle": null,
+  "sqlText": null
+}
+```
+
+同一 `scope + scopeKey + key` 会强化已有记忆，而不是重复插入。
+
+`promoteToKnowledge=true` 且提供 `sqlText` 时，同时创建知识库条目：
+
+```json
+{
+  "memory": { "...": "MemoryView" },
+  "knowledge": { "...": "KnowledgeView" }
+}
+```
+
+### `GET /api/memory/overview`
+
+```json
+{
+  "total": 5,
+  "active": 5,
+  "archived": 0,
+  "knowledgeLinked": 1,
+  "recent": []
+}
+```
+
+### 其他
+
+| Method | Path | 说明 |
+| --- | --- | --- |
+| GET | `/api/memory/{id}` | 详情 |
+| PUT | `/api/memory/{id}` | 更新内容/置信度/重要性 |
+| DELETE | `/api/memory/{id}` | 删除 |
+| POST | `/api/memory/{id}/use` | 使用次数 +1 |
+| POST | `/api/memory/{id}/archive` | 归档 |
+| POST | `/api/memory/archive-expired` | 归档过期记忆 |
+
+## 11. 运维可观测与 SRE 基准
 
 ### `GET /api/ops/overview`
 
@@ -782,7 +865,7 @@ Prometheus 指标：
 
 定时执行由 `dataagent.benchmark.sync-*` 控制，默认 1 小时；本地可用 `scripts/verify-benchmark-scheduler.ps1` 验证。
 
-## 11. 优化
+## 12. 优化
 
 ### `POST /api/optimize/analyze`
 
@@ -871,7 +954,7 @@ Prometheus 指标：
 { "prompt": "...", "guardrails": ["..."] }
 ```
 
-## 12. 错误码
+## 13. 错误码
 
 | HTTP | code | 说明 |
 | --- | --- | --- |
@@ -882,7 +965,7 @@ Prometheus 指标：
 | 502 | `UPSTREAM_ERROR` | 上游/数据库错误（部分场景返回 200 + status=ERROR） |
 | 500 | `INTERNAL_ERROR` | 未预期异常 |
 
-## 13. curl 速查
+## 14. curl 速查
 
 ```bash
 TOKEN=dataagent-dev-token
@@ -925,4 +1008,10 @@ curl -s "$BASE/api/semantic/relationships?q=订单" -H "X-API-Key: $TOKEN"
 curl -s "$BASE/api/verified-queries?q=GMV" -H "X-API-Key: $TOKEN"
 
 curl -s -X POST "$BASE/api/verified-queries/<id>/validate" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/memory?q=GMV" -H "X-API-Key: $TOKEN"
+
+curl -s -X POST "$BASE/api/memory" \
+  -H "X-API-Key: $TOKEN" -H "Content-Type: application/json" \
+  -d '{"scope":"GLOBAL","kind":"PREFERENCE","key":"gmv.definition","content":"GMV 按支付成功订单统计"}'
 ```

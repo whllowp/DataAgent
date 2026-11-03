@@ -1,6 +1,7 @@
 package com.dataagent.bootstrap;
 
 import com.dataagent.config.DataAgentProperties;
+import com.dataagent.domain.AgentMemory;
 import com.dataagent.domain.Datasource;
 import com.dataagent.domain.KnowledgeEntry;
 import com.dataagent.domain.QueryExecution;
@@ -10,6 +11,7 @@ import com.dataagent.domain.SemanticRelationship;
 import com.dataagent.domain.SemanticTerm;
 import com.dataagent.domain.SqlBenchmarkCase;
 import com.dataagent.domain.VerifiedQuery;
+import com.dataagent.repository.AgentMemoryRepository;
 import com.dataagent.repository.DatasourceRepository;
 import com.dataagent.repository.KnowledgeEntryRepository;
 import com.dataagent.repository.QueryExecutionRepository;
@@ -62,6 +64,7 @@ public class DemoDataInitializer implements ApplicationRunner {
     private final SemanticLinkRepository semanticLinks;
     private final SemanticRelationshipRepository semanticRelationships;
     private final VerifiedQueryRepository verifiedQueries;
+    private final AgentMemoryRepository agentMemories;
     private final SqlAssetService sqlAssetService;
     private final SemanticSyncService semanticSyncService;
     private final SqlBenchmarkCaseRepository benchmarks;
@@ -73,6 +76,7 @@ public class DemoDataInitializer implements ApplicationRunner {
                                SemanticLinkRepository semanticLinks,
                                SemanticRelationshipRepository semanticRelationships,
                                VerifiedQueryRepository verifiedQueries,
+                               AgentMemoryRepository agentMemories,
                                SqlAssetService sqlAssetService,
                                SemanticSyncService semanticSyncService,
                                SqlBenchmarkCaseRepository benchmarks) {
@@ -87,6 +91,7 @@ public class DemoDataInitializer implements ApplicationRunner {
         this.semanticLinks = semanticLinks;
         this.semanticRelationships = semanticRelationships;
         this.verifiedQueries = verifiedQueries;
+        this.agentMemories = agentMemories;
         this.sqlAssetService = sqlAssetService;
         this.semanticSyncService = semanticSyncService;
         this.benchmarks = benchmarks;
@@ -114,6 +119,7 @@ public class DemoDataInitializer implements ApplicationRunner {
         }
         seedSemanticLayer();
         seedOntologyAndVerifiedQueries(demo);
+        seedLongTermMemory();
         seedBenchmarks(demo);
         if (semanticLinks.count() == 0) {
             semanticSyncService.sync("SEED");
@@ -581,6 +587,41 @@ public class DemoDataInitializer implements ApplicationRunner {
         query.setOwner("demo");
         query.setNotes(notes);
         verifiedQueries.save(query);
+    }
+
+    private void seedLongTermMemory() {
+        if (agentMemories.count() > 0) {
+            return;
+        }
+        saveMemory("GLOBAL", null, "PREFERENCE", "gmv.default_definition",
+                "GMV 默认按支付成功订单统计；日期区间使用半开区间，避免在日期列上套 YEAR()。",
+                "USER", 85, 75, "GMV,口径,SQL规范");
+        saveMemory("DOMAIN", "销售", "DECISION", "aov.denominator",
+                "客单价分母使用支付客户数，而不是订单数；跨渠道对比时必须使用同一客户去重口径。",
+                "USER", 80, 70, "客单价,客户数,销售");
+        saveMemory("DOMAIN", "销售", "OPEN_QUESTION", "channel.null_policy",
+                "渠道为空时是否归入 UNKNOWN，需要业务确认后再固化到语义层。",
+                "AGENT", 55, 45, "渠道,待确认,数据质量");
+        saveMemory("GLOBAL", null, "PATTERN", "join.customer_order",
+                "订单与客户关联使用 sales_orders.customer_id = customers.id；从订单聚合到客户维度前先确认是否去重。",
+                "AGENT", 75, 60, "JOIN,订单,客户");
+    }
+
+    private void saveMemory(String scope, String scopeKey, String kind, String key,
+                            String content, String source, int confidence, int importance, String tags) {
+        AgentMemory memory = new AgentMemory();
+        memory.setScope(scope);
+        memory.setScopeKey(scopeKey);
+        memory.setKind(kind);
+        memory.setMemoryKey(key);
+        memory.setContent(content);
+        memory.setSource(source);
+        memory.setConfidence(confidence);
+        memory.setImportance(importance);
+        memory.setTags(tags);
+        memory.setOwner("demo");
+        memory.setStatus("ACTIVE");
+        agentMemories.save(memory);
     }
 
     private void seedBenchmarks(Datasource demo) {

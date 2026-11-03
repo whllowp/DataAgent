@@ -120,6 +120,8 @@ export function createApi({ baseUrl, token }) {
     verifiedQueries: (q) => request(`/api/verified-queries${encodeQuery({ q })}`),
     validateVerifiedQuery: (id) => request(`/api/verified-queries/${id}/validate`, { method: 'POST' }),
     useVerifiedQuery: (id) => request(`/api/verified-queries/${id}/use`, { method: 'POST' }),
+    memories: (q) => request(`/api/memory${encodeQuery({ q })}`),
+    archiveMemory: (id) => request(`/api/memory/${id}/archive`, { method: 'POST' }),
     opsOverview: () => request('/api/ops/overview'),
     benchmarks: () => request('/api/benchmarks'),
     runBenchmark: (id) => request(`/api/benchmarks/${id}/run`, { method: 'POST' }),

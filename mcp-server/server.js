@@ -493,6 +493,58 @@ const tools = [
     },
     handler: (args) => api(`/api/verified-queries/${encodeURIComponent(args.id)}/validate`, { method: 'POST' }),
   },
+  {
+    name: 'dataagent_search_memory',
+    description: '检索长期记忆：用户偏好、业务决策、事实、SQL 模式和待确认问题。写 SQL/设计功能前先查，避免重复询问。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        scope: { type: 'string', description: 'GLOBAL / DOMAIN / DATASOURCE / USER' },
+        kind: { type: 'string', description: 'PREFERENCE / FACT / DECISION / PATTERN / OPEN_QUESTION' },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => {
+      const params = new URLSearchParams();
+      if (args.query) params.set('q', args.query);
+      if (args.scope) params.set('scope', args.scope);
+      if (args.kind) params.set('kind', args.kind);
+      return api(`/api/memory?${params.toString()}`);
+    },
+  },
+  {
+    name: 'dataagent_remember',
+    description: '沉淀一条长期记忆（偏好/决策/事实/模式/待确认问题）；可同时提升为知识库条目。相同 scope+key 会强化而不是重复。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        scope: { type: 'string' },
+        scopeKey: { type: 'string' },
+        kind: { type: 'string' },
+        key: { type: 'string' },
+        content: { type: 'string' },
+        source: { type: 'string' },
+        confidence: { type: 'integer', minimum: 0, maximum: 100 },
+        importance: { type: 'integer', minimum: 0, maximum: 100 },
+        tags: { type: 'string' },
+        promoteToKnowledge: { type: 'boolean' },
+        knowledgeTitle: { type: 'string' },
+        sqlText: { type: 'string' },
+      },
+      required: ['scope', 'kind', 'key', 'content'],
+      additionalProperties: false,
+    },
+    handler: (args) => api('/api/memory', { method: 'POST', body: args }),
+  },
+  {
+    name: 'dataagent_memory_overview',
+    description: '查看长期记忆规模、活跃/归档数量、已提升知识数。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    handler: () => api('/api/memory/overview'),
+  },
 ];
 
 async function firstDatasourceId() {

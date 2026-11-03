@@ -157,6 +157,7 @@ public final class SemanticDtos {
             List<TermView> terms,
             List<RelationshipView> relationships,
             List<VerifiedQueryDtos.View> verifiedQueries,
+            List<MemoryDtos.MemoryView> memories,
             List<KnowledgeDtos.KnowledgeView> knowledge,
             List<SqlAssetDtos.SqlAssetView> assets
     ) {
@@ -177,6 +178,7 @@ public final class SemanticDtos {
             List<TermView> terms,
             List<RelationshipView> relationships,
             List<VerifiedQueryDtos.View> verifiedQueries,
+            List<MemoryDtos.MemoryView> memories,
             List<String> designAngles,
             List<String> questions,
             List<String> risks,

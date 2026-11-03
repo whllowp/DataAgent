@@ -287,6 +287,7 @@ export function SqlStudio({ embedded = false }) {
   const [semanticTerms, setSemanticTerms] = React.useState([]);
   const [semanticRelationships, setSemanticRelationships] = React.useState([]);
   const [verifiedQueries, setVerifiedQueries] = React.useState([]);
+  const [memories, setMemories] = React.useState([]);
   const [semanticLoading, setSemanticLoading] = React.useState(false);
   const [semanticQuery, setSemanticQuery] = React.useState('');
   const [semanticSubTab, setSemanticSubTab] = React.useState('entities');
@@ -515,13 +516,14 @@ export function SqlStudio({ embedded = false }) {
   async function loadSemantic(query = semanticQuery) {
     setSemanticLoading(true);
     try {
-      const [overview, entities, metrics, terms, relationships, verified] = await Promise.all([
+      const [overview, entities, metrics, terms, relationships, verified, memoryItems] = await Promise.all([
         api.semanticOverview(),
         api.semanticEntities(query),
         api.semanticMetrics(query),
         api.semanticTerms(query),
         api.semanticRelationships(query),
         api.verifiedQueries(query),
+        api.memories(query),
       ]);
       setSemanticOverview(overview);
       setSemanticEntities(entities || []);
@@ -529,6 +531,7 @@ export function SqlStudio({ embedded = false }) {
       setSemanticTerms(terms || []);
       setSemanticRelationships(relationships || []);
       setVerifiedQueries(verified || []);
+      setMemories(memoryItems || []);
     } catch (error) {
       showToast(error.message, 'error');
     } finally {
@@ -542,6 +545,16 @@ export function SqlStudio({ embedded = false }) {
       showToast(result.success
         ? `验证通过：${result.rowCount} 行 / ${formatDuration(result.durationMs)}`
         : `验证失败：${result.message || '未知错误'}`, result.success ? 'success' : 'error');
+      await loadSemantic();
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+  }
+
+  async function archiveMemory(id) {
+    try {
+      await api.archiveMemory(id);
+      showToast('记忆已归档。', 'success');
       await loadSemantic();
     } catch (error) {
       showToast(error.message, 'error');
@@ -1241,6 +1254,7 @@ export function SqlStudio({ embedded = false }) {
                 terms={semanticTerms}
                 relationships={semanticRelationships}
                 verifiedQueries={verifiedQueries}
+                memories={memories}
                 loading={semanticLoading}
                 query={semanticQuery}
                 setQuery={setSemanticQuery}
@@ -1258,6 +1272,7 @@ export function SqlStudio({ embedded = false }) {
                 onCopy={handleCopy}
                 onOpenSql={(sql) => openSql(sql, '语义层关联 SQL')}
                 onValidateVerified={validateVerifiedQuery}
+                onArchiveMemory={archiveMemory}
               />
             ) : null}
           </div>
@@ -1813,16 +1828,17 @@ function AssetsPanel({ items, loading, query, setQuery, onSearch, onRefresh, onO
 }
 
 function SemanticPanel({
-  overview, entities, metrics, terms, relationships, verifiedQueries, loading, query, setQuery, subTab, setSubTab,
+  overview, entities, metrics, terms, relationships, verifiedQueries, memories, loading, query, setQuery, subTab, setSubTab,
   onSearch, onRefresh, onSync, syncing, designIdea, setDesignIdea, designResult, onDesign,
-  designing, onCopy, onOpenSql, onValidateVerified,
+  designing, onCopy, onOpenSql, onValidateVerified, onArchiveMemory,
 }) {
   const subtabs = [
     ['entities', '实体', entities.length],
     ['metrics', '指标', metrics.length],
     ['terms', '术语', terms.length],
     ['relations', '关系', relationships.length],
-    ['verified', '已验证', verifiedQueries.length],
+    ['verified', '验证', verifiedQueries.length],
+    ['memory', '记忆', memories.length],
   ];
   const demoOwned = [...entities, ...metrics, ...terms].some((item) => item.owner === 'demo');
   return (
@@ -1904,6 +1920,16 @@ function SemanticPanel({
                 <button className="da-design-line da-design-link" key={verified.id} onClick={() => onOpenSql(verified.sqlText)}>
                   → {verified.question}
                 </button>
+              ))}
+            </>
+          ) : null}
+          {designResult.memories?.length ? (
+            <>
+              <div className="da-kb-section-label">长期记忆</div>
+              {designResult.memories.slice(0, 4).map((memory) => (
+                <div className="da-design-line" key={memory.id}>
+                  • [{memory.kind}] {memory.memoryKey}：{memory.content}
+                </div>
               ))}
             </>
           ) : null}
@@ -2034,11 +2060,36 @@ function SemanticPanel({
         </div>
       )) : null}
 
+      {!loading && subTab === 'memory' ? memories.map((memory) => (
+        <div className="da-kb-card" key={memory.id}>
+          <div className="da-kb-title">
+            {memory.memoryKey}
+            <span className={`da-status ${memory.status === 'ACTIVE' ? 'ok' : 'warn'}`}>{memory.status}</span>
+            <span className="da-tag">{memory.kind}</span>
+          </div>
+          <div className="da-kb-problem">{memory.content}</div>
+          <div className="da-list-meta">
+            <span>{memory.scope}{memory.scopeKey ? `:${memory.scopeKey}` : ''}</span>
+            <span>置信 {memory.confidence}</span>
+            <span>重要 {memory.importance}</span>
+            <span>强化 {memory.reinforcementCount}</span>
+            {memory.knowledgeId ? <span className="da-status ok">已入知识库</span> : null}
+          </div>
+          {memory.tags ? <div className="da-tags"><span className="da-tag">{memory.tags}</span></div> : null}
+          {memory.status === 'ACTIVE' ? (
+            <div className="da-kb-actions">
+              <button className="da-btn small ghost" onClick={() => onArchiveMemory(memory.id)}>归档</button>
+            </div>
+          ) : null}
+        </div>
+      )) : null}
+
       {!loading && ((subTab === 'entities' && !entities.length)
         || (subTab === 'metrics' && !metrics.length)
         || (subTab === 'terms' && !terms.length)
         || (subTab === 'relations' && !relationships.length)
-        || (subTab === 'verified' && !verifiedQueries.length)) ? (
+        || (subTab === 'verified' && !verifiedQueries.length)
+        || (subTab === 'memory' && !memories.length)) ? (
         <div className="da-tree-empty">语义层暂无匹配内容。可通过 API 新增，或点击“同步知识”建立关联。</div>
       ) : null}
     </div>
