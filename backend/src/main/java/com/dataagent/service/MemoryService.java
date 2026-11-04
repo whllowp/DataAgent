@@ -22,10 +22,13 @@ public class MemoryService {
 
     private final AgentMemoryRepository memories;
     private final KnowledgeService knowledgeService;
+    private final EmbeddingService embeddings;
 
-    public MemoryService(AgentMemoryRepository memories, KnowledgeService knowledgeService) {
+    public MemoryService(AgentMemoryRepository memories, KnowledgeService knowledgeService,
+                         EmbeddingService embeddings) {
         this.memories = memories;
         this.knowledgeService = knowledgeService;
+        this.embeddings = embeddings;
     }
 
     @Transactional(readOnly = true)
@@ -49,6 +52,8 @@ public class MemoryService {
         String scopeKey = blank(request.scopeKey()) ? null : request.scopeKey().trim();
         AgentMemory memory = memories.findExact(scope, scopeKey, key).orElseGet(AgentMemory::new);
         boolean created = memory.getId() == null;
+        List<MemoryDtos.MemoryView> conflicts = created ? List.of() :
+                conflicts(scope, scopeKey, key, request.content());
         if (created) {
             memory.setScope(scope);
             memory.setScopeKey(scopeKey);
@@ -93,7 +98,7 @@ public class MemoryService {
             memory.setKnowledgeId(linkedKnowledge.id());
         }
         memories.save(memory);
-        return new MemoryDtos.CaptureResult(view(memory), linkedKnowledge);
+        return new MemoryDtos.CaptureResult(view(memory), linkedKnowledge, conflicts);
     }
 
     @Transactional
@@ -165,31 +170,32 @@ public class MemoryService {
                 datasourceKey == null ? "" : datasourceKey,
                 userKey == null ? "" : userKey,
                 Instant.now());
-        Set<String> tokens = tokenize(query);
-        return candidates.stream()
-                .filter(memory -> tokens.isEmpty() || matches(memory, tokens))
-                .limit(MAX_CONTEXT_MEMORIES)
-                .map(this::view)
-                .toList();
+        return embeddings.rank(query,
+                        candidates,
+                        memory -> memory.getMemoryKey() + " " + memory.getContent() + " " + nullToEmpty(memory.getTags()),
+                        MAX_CONTEXT_MEMORIES)
+                .stream().map(this::view).toList();
     }
 
-    private boolean matches(AgentMemory memory, Set<String> tokens) {
-        String text = (memory.getMemoryKey() + " " + memory.getContent() + " " + nullToEmpty(memory.getTags()))
-                .toLowerCase(Locale.ROOT);
-        return tokens.stream().anyMatch(text::contains);
+    @Transactional(readOnly = true)
+    public List<MemoryDtos.MemoryView> conflicts(String scope, String scopeKey, String key, String content) {
+        return memories.findExact(scope, scopeKey, key)
+                .map(existing -> {
+                    double similarity = embeddings.similarity(
+                            embeddings.embed(existing.getContent()), embeddings.embed(content));
+                    boolean negationConflict = hasNegation(existing.getContent()) != hasNegation(content);
+                    return similarity < 0.58 || negationConflict
+                            ? List.of(view(existing)) : List.<MemoryDtos.MemoryView>of();
+                })
+                .orElse(List.of());
     }
 
-    private Set<String> tokenize(String query) {
-        Set<String> tokens = new LinkedHashSet<>();
-        if (query == null) {
-            return tokens;
+    private boolean hasNegation(String value) {
+        if (value == null) {
+            return false;
         }
-        for (String token : query.replaceAll("[\\p{Punct}，。；：！？、]+", " ").trim().split("\\s+")) {
-            if (token.length() >= 2) {
-                tokens.add(token.toLowerCase(Locale.ROOT));
-            }
-        }
-        return tokens;
+        return value.contains("不是") || value.contains("不要") || value.contains("不能")
+                || value.contains("禁止") || value.contains("不再");
     }
 
     private AgentMemory required(UUID id) {

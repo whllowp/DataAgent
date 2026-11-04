@@ -28,7 +28,7 @@ flowchart TB
     direction TB
     Panel["DataAgent SQL 面板<br/>Schema 树 / 编辑器 / 结果 / 历史 / 知识库"]
     DSH["DSH Agent + 大模型"]
-    MCP["MCP stdio bridge<br/>27 个 dataagent_* 工具"]
+    MCP["MCP stdio bridge<br/>30 个 dataagent_* 工具"]
     Panel -->|"HTTPS / REST"| Gateway
     DSH -->|"tool call"| MCP
     MCP -->|"HTTPS / REST"| Gateway
@@ -321,7 +321,14 @@ EXPLAIN <sql>
 - 支持过期时间、归档、使用次数
 - `promoteToKnowledge=true` 时创建 `knowledge_entry` 并记录 `knowledge_id`
 
-`MemoryService.context` 会把 GLOBAL、当前业务域和 token 匹配的记忆注入语义上下文/设计 Prompt；每日 03:15 归档过期记忆。详细设计见 [MEMORY.md](MEMORY.md)。
+`MemoryService.context` 会把 GLOBAL、当前业务域和 embedding 召回的记忆注入语义上下文/设计 Prompt；每日 03:15 归档过期记忆。详细设计见 [MEMORY.md](MEMORY.md)。
+
+补充机制：
+
+- **候选审核**：对话结束抽取到 `memory_candidate`，人工 approve/reject 后才入库
+- **冲突检测**：同 scope+key 的新旧内容 embedding 相似度低或否定词不一致时提示，审核可强制通过
+- **反馈闭环**：`agent_feedback` → 长期记忆 + DRAFT verified query
+- **向量召回**：本地 hashed n-gram embedding + cosine，替换纯 tokenize 检索
 
 ## 4. 数据模型
 
@@ -422,6 +429,11 @@ V5 新增：
 V6 新增：
 
 - `agent_memory`：长期记忆、作用域、置信度、强化次数、知识提升关联。
+
+V7 新增：
+
+- `memory_candidate`：对话抽取候选与人工审核状态。
+- `agent_feedback`：用户纠错、评分与 memory/verified query 关联。
 
 ## 5. 关键流程
 
@@ -585,6 +597,9 @@ dsh-plugin/
 | `dataagent_search_memory` | 检索长期记忆 |
 | `dataagent_remember` | 沉淀长期记忆/提升知识 |
 | `dataagent_memory_overview` | 记忆概览 |
+| `dataagent_extract_memory_candidates` | 对话抽取候选 |
+| `dataagent_review_memory_candidate` | 审核候选 |
+| `dataagent_submit_feedback` | 纠错反馈闭环 |
 
 所有工具最终受云端的只读网关约束；模型不能通过 MCP 绕过 `SqlGuard`。
 

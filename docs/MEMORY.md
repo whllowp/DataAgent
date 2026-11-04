@@ -72,6 +72,80 @@
 - 语义层：可复用的指标/术语/关系
 - Verified Query：可回归的标准 Q→SQL
 
+## 4.1 对话结束自动抽取候选
+
+`POST /api/memory/candidates/extract` 接收会话摘要或消息列表：
+
+```json
+{
+  "sessionId": "s-123",
+  "domain": "销售",
+  "summary": "以后 GMV 默认按支付成功订单统计。",
+  "messages": [
+    {"role": "user", "content": "以后 GMV 默认按支付成功订单统计"},
+    {"role": "assistant", "content": "已记录"}
+  ]
+}
+```
+
+抽取规则：
+
+- 按句子切分，命中「默认/口径/定义/必须/不要/待确认/是否/统一/以后/记住/决策/规则」等线索
+- 自动推断 PREFERENCE / DECISION / PATTERN / OPEN_QUESTION / FACT
+- 生成 `auto.<hash>` 记忆 key 与 content hash
+- **只写入 `memory_candidate`，状态 PENDING，不直接进入记忆/上下文**
+
+审核：
+
+- `GET /api/memory/candidates?status=PENDING`
+- `POST /api/memory/candidates/{id}/approve`
+- `POST /api/memory/candidates/{id}/reject`
+
+UI 的「记忆」页签展示待审核候选，支持通过 / 强制通过 / 拒绝。
+
+## 4.2 冲突检测
+
+在候选审核或写入同一 `scope+key` 时，比较新旧内容的 embedding：
+
+- 相似度低于阈值，或一方含「不是/不要/不能/禁止/不再」而另一方没有
+- 返回 `conflicts`，审核接口默认不通过
+- 审核人确认后可 `force=true` 强制通过
+
+## 4.3 Embedding 召回
+
+`EmbeddingService` 使用本地、无依赖的 hashed word/character n-gram + cosine：
+
+- 语义层实体/指标/术语检索
+- 长期记忆召回
+- Verified Query 召回
+
+它替代了原先的纯 tokenize 匹配；后续可替换为远程 embedding 模型，而不改调用方。
+
+## 4.4 反馈闭环
+
+`POST /api/feedback`：
+
+```json
+{
+  "sessionId": "s-123",
+  "question": "按城市统计 GMV",
+  "originalSql": "SELECT city FROM sales_orders",
+  "correctedSql": "SELECT city, SUM(amount) FROM sales_orders WHERE status = 'PAID' GROUP BY city",
+  "correction": "按城市统计 GMV 时必须过滤 PAID",
+  "domain": "销售",
+  "rating": 5
+}
+```
+
+一次调用完成：
+
+1. 记录 `agent_feedback`
+2. 写入/强化 `agent_memory`（source=FEEDBACK）
+3. 若有 `correctedSql`，创建 `DRAFT` verified query
+4. 返回 memory、verified query、conflicts
+
+MCP：`dataagent_submit_feedback`，DSH 可在用户点踩/纠错时直接调用。
+
 ## 5. 生命周期
 
 - `status`: ACTIVE / ARCHIVED
@@ -95,11 +169,30 @@ REST：
 | POST | `/api/memory/{id}/archive` |
 | POST | `/api/memory/archive-expired` |
 
+候选审核：
+
+| Method | Path |
+| --- | --- |
+| GET | `/api/memory/candidates?status=PENDING` |
+| POST | `/api/memory/candidates/extract` |
+| POST | `/api/memory/candidates/{id}/approve` |
+| POST | `/api/memory/candidates/{id}/reject` |
+
+反馈闭环：
+
+| Method | Path |
+| --- | --- |
+| POST | `/api/feedback` |
+| GET | `/api/feedback` |
+
 MCP：
 
 - `dataagent_search_memory`
 - `dataagent_remember`
 - `dataagent_memory_overview`
+- `dataagent_extract_memory_candidates`
+- `dataagent_review_memory_candidate`
+- `dataagent_submit_feedback`
 
 ## 7. 治理建议
 
@@ -107,4 +200,5 @@ MCP：
 - OPEN_QUESTION 不应当作事实使用
 - 定期把高价值记忆提升为知识库或 Verified Query
 - 对过期/低置信记忆只归档不删除，保留审计
-- 后续可加 embedding 召回、冲突检测和人工审核队列
+- 候选审核与反馈纠错必须保留 reviewedBy/reviewedAt
+- 远程 embedding 模型可作为本地 hashed embedding 的替换实现

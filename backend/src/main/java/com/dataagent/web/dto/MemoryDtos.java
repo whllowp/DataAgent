@@ -53,7 +53,8 @@ public final class MemoryDtos {
     ) {
     }
 
-    public record CaptureResult(MemoryView memory, KnowledgeDtos.KnowledgeView knowledge) {
+    public record CaptureResult(MemoryView memory, KnowledgeDtos.KnowledgeView knowledge,
+                                List<MemoryView> conflicts) {
     }
 
     public record MemoryOverview(

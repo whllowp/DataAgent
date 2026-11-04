@@ -11,6 +11,8 @@ import com.dataagent.service.JdbcQueryService;
 import com.dataagent.service.OptimizationService;
 import com.dataagent.service.OpsService;
 import com.dataagent.service.BenchmarkService;
+import com.dataagent.service.FeedbackService;
+import com.dataagent.service.MemoryCandidateService;
 import com.dataagent.service.MemoryService;
 import com.dataagent.service.SemanticService;
 import com.dataagent.service.SemanticSyncService;
@@ -18,7 +20,9 @@ import com.dataagent.service.SqlAssetService;
 import com.dataagent.service.VerifiedQueryService;
 import com.dataagent.web.ApiException;
 import com.dataagent.web.dto.BenchmarkDtos;
+import com.dataagent.web.dto.FeedbackDtos;
 import com.dataagent.web.dto.HistoryDtos;
+import com.dataagent.web.dto.MemoryCandidateDtos;
 import com.dataagent.web.dto.MemoryDtos;
 import com.dataagent.web.dto.OptimizeDtos;
 import com.dataagent.web.dto.OpsDtos;
@@ -82,6 +86,10 @@ class DataAgentIntegrationTest {
     private VerifiedQueryService verifiedQueries;
     @Autowired
     private MemoryService memories;
+    @Autowired
+    private MemoryCandidateService memoryCandidates;
+    @Autowired
+    private FeedbackService feedbacks;
     @Autowired
     private MockMvc mockMvc;
 
@@ -239,6 +247,49 @@ class DataAgentIntegrationTest {
     void semanticContextIncludesLongTermMemory() {
         assertFalse(semantic.context("GMV 城市", "销售").memories().isEmpty());
         assertTrue(memories.overview().total() >= 4);
+    }
+
+    @Test
+    void extractsConversationCandidateAndApprovesIt() {
+        MemoryCandidateDtos.ExtractResult extracted = memoryCandidates.extract(
+                new MemoryCandidateDtos.ExtractRequest("test-session-" + System.nanoTime(), null, "销售",
+                        java.util.List.of(new MemoryCandidateDtos.Message("user",
+                                "以后 GMV 默认按支付成功订单统计，日期使用半开区间。"))));
+        assertTrue(extracted.extracted() >= 1);
+        MemoryCandidateDtos.View candidate = extracted.candidates().get(0);
+        assertEquals("PENDING", candidate.status());
+        assertTrue(candidate.content().contains("默认"));
+
+        MemoryCandidateDtos.ApproveResult approved = memoryCandidates.approve(candidate.id(),
+                new MemoryCandidateDtos.ApproveRequest(false, false, null, null, "tester"));
+        assertTrue(approved.approved());
+        assertNotNull(approved.memory());
+        assertEquals("APPROVED", approved.candidate().status());
+    }
+
+    @Test
+    void detectsConflictingMemoryDefinition() {
+        String key = "test.conflict." + System.nanoTime();
+        memories.capture(new MemoryDtos.CaptureRequest(
+                "GLOBAL", null, "DECISION", key, "渠道为空必须归入 UNKNOWN",
+                "USER", 80, 70, "test", "tester", null, false, null, null));
+        MemoryDtos.CaptureResult conflict = memories.capture(new MemoryDtos.CaptureRequest(
+                "GLOBAL", null, "DECISION", key, "渠道为空不要归入 UNKNOWN",
+                "USER", 80, 70, "test", "tester", null, false, null, null));
+        assertFalse(conflict.conflicts().isEmpty());
+    }
+
+    @Test
+    void feedbackCreatesMemoryAndDraftVerifiedQuery() {
+        FeedbackDtos.Result result = feedbacks.submit(new FeedbackDtos.Request(
+                "feedback-session", "按城市统计 GMV", "SELECT city FROM sales_orders",
+                "SELECT city, SUM(amount) FROM sales_orders GROUP BY city",
+                "按城市统计 GMV 时必须过滤 PAID", 5, "用户纠错",
+                demo.getId(), null, null, "销售", "tester"));
+        assertNotNull(result.memory());
+        assertNotNull(result.verifiedQuery());
+        assertEquals("DRAFT", result.verifiedQuery().status());
+        assertNotNull(result.feedback().verifiedQueryId());
     }
 
     @Test

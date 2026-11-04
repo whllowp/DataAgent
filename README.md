@@ -25,7 +25,9 @@
    - **语义层**：实体、指标、术语、同义词、物理表、业务定义，以及知识/资产关联
    - **Ontology 关系**：实体间 join 条件、基数与去重提示，避免 Agent 猜 JOIN
    - **Verified Query**：人工审核的 Q→SQL 目录，支持只读验证、回归和 few-shot 检索
-   - **长期记忆**：跨会话保存用户偏好、业务决策、事实、SQL 模式和待确认问题；可提升为知识库条目
+   - **长期记忆**：跨会话保存用户偏好、业务决策、事实、SQL 模式和待确认问题；对话结束自动抽取候选，人工审核后入库，支持冲突提示与提升为知识库
+   - **反馈闭环**：用户纠错一键沉淀为长期记忆 + DRAFT Verified Query
+   - **向量召回**：语义层/记忆/已验证查询使用本地 hashed embedding + cosine 排序，替代纯关键词
    - **定期互通**：语义层与知识库、SQL 资产定时同步，也可手动触发
    - **运维可观测**：查询耗时/失败/慢查询、连接池、JVM、语义同步与 SRE 基准状态；Prometheus 指标 `/actuator/prometheus`
    - **SRE 基准数据集**：只读基准 SQL 用例，支持手动/定时执行，结果进入 SQL 资产并参与语义关联
@@ -41,7 +43,7 @@
    - 同一个 React 组件也构建为独立页面：`http://127.0.0.1:8080/studio/`
 
 3. **DSH 大模型 + MCP 工具**
-   - **27 个 `dataagent_*` MCP 工具**：列数据源、看表结构、只读执行、取计划、分析、对比、搜知识库、保存知识、标记解决、查历史、看统计，以及 SQL 资产、语义上下文、设计助手、语义沉淀、手动同步、运维概览、SRE 基准、已验证查询、长期记忆
+   - **30 个 `dataagent_*` MCP 工具**：列数据源、看表结构、只读执行、取计划、分析、对比、搜知识库、保存知识、标记解决、查历史、看统计，以及 SQL 资产、语义上下文、设计助手、语义沉淀、手动同步、运维概览、SRE 基准、已验证查询、长期记忆、候选审核、反馈闭环
    - 面板生成包含 SQL、真实计划、静态发现和约束的 Prompt
    - 模型可继续调用工具验证，而不是凭空给建议
    - 验证后的结论可回写知识库与语义层
@@ -190,12 +192,12 @@ dataagent/
 │  │  ├─ sql/                SQL 守卫、计划解析、规则分析
 │  │  └─ web/                REST 控制器 + DTO
 │  └─ src/main/resources/
-│     ├─ db/migration/       Flyway（V1 执行/知识、V2 资产+语义层、V3 DRAFT、V4 SRE、V5 Ontology+Verified、V6 Memory）
+│     ├─ db/migration/       Flyway（V1 执行/知识、V2 资产+语义层、V3 DRAFT、V4 SRE、V5 Ontology+Verified、V6 Memory、V7 候选+反馈）
 │     ├─ static/studio/      构建生成，不入库
 │     └─ application.yml
 ├─ studio/                   React + esbuild 源码（独立页 + DSH Client）
 ├─ dsh-plugin/               DSH bundle（client.js 构建生成；patch/icon/locale 入库）
-├─ mcp-server/              零依赖 MCP stdio 工具桥（27 个工具）
+├─ mcp-server/              零依赖 MCP stdio 工具桥（30 个工具）
 ├─ docs/                     架构、API、语义层、DSH 集成
 ├─ scripts/                  构建、运行、冒烟
 ├─ docker-compose.yml
@@ -248,7 +250,7 @@ java -jar backend/target/dataagent-cloud-0.1.0.jar
 ## 开发与测试
 
 ```powershell
-# 后端单元 + 集成测试（29 个）
+# 后端单元 + 集成测试（32 个）
 cd backend
 mvn test
 
@@ -267,7 +269,7 @@ backend/src/main/resources/static/studio/app.js
 dsh-plugin/client.js
 ```
 
-测试覆盖：SQL 守卫、静态规则、计划解析（PostgreSQL/MySQL/H2）、真实 H2 查询、执行计划、知识沉淀、SQL 资产缓存、语义上下文/设计、Ontology 关系、Verified Query 验证、长期记忆强化/提升知识、定期同步幂等、运维概览、SRE 基准执行、API Token。
+测试覆盖：SQL 守卫、静态规则、计划解析（PostgreSQL/MySQL/H2）、真实 H2 查询、执行计划、知识沉淀、SQL 资产缓存、语义上下文/设计、Ontology 关系、Verified Query 验证、长期记忆强化/提升知识、对话候选抽取/审核、冲突检测、纠错反馈闭环、定期同步幂等、运维概览、SRE 基准执行、API Token。
 
 定期同步可用临时端口验证，不需要等 30 分钟：
 

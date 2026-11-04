@@ -53,6 +53,7 @@ public class SemanticService {
     private final SqlAssetService sqlAssetService;
     private final VerifiedQueryService verifiedQueries;
     private final MemoryService memoryService;
+    private final EmbeddingService embeddings;
 
     public SemanticService(SemanticEntityRepository entities, SemanticMetricRepository metrics,
                            SemanticTermRepository terms, SemanticLinkRepository links,
@@ -60,7 +61,7 @@ public class SemanticService {
                            SemanticSyncRunRepository syncRuns, KnowledgeEntryRepository knowledge,
                            SqlAssetRepository assets, KnowledgeService knowledgeService,
                            SqlAssetService sqlAssetService, VerifiedQueryService verifiedQueries,
-                           MemoryService memoryService) {
+                           MemoryService memoryService, EmbeddingService embeddings) {
         this.entities = entities;
         this.metrics = metrics;
         this.terms = terms;
@@ -73,6 +74,7 @@ public class SemanticService {
         this.sqlAssetService = sqlAssetService;
         this.verifiedQueries = verifiedQueries;
         this.memoryService = memoryService;
+        this.embeddings = embeddings;
     }
 
     @Transactional(readOnly = true)
@@ -516,38 +518,33 @@ public class SemanticService {
     }
 
     private List<SemanticDtos.EntityView> searchEntities(String query, String domain) {
-        Map<UUID, SemanticDtos.EntityView> result = new java.util.LinkedHashMap<>();
         if (query == null || query.isBlank()) {
-            entities.search(null, blankToNull(domain)).forEach(entity -> result.put(entity.getId(), toEntityView(entity)));
-            return new ArrayList<>(result.values());
+            return entities.search(null, blankToNull(domain)).stream().map(this::toEntityView).toList();
         }
-        for (String token : tokens(query)) {
-            entities.search(token, blankToNull(domain))
-                    .forEach(entity -> result.put(entity.getId(), toEntityView(entity)));
-        }
-        return new ArrayList<>(result.values());
+        return embeddings.rank(query, entities.search(null, blankToNull(domain)),
+                        entity -> String.join(" ", entity.getDisplayName(), entity.getName(),
+                                nullToEmpty(entity.getDescription()), nullToEmpty(entity.getSynonyms()),
+                                nullToEmpty(entity.getTags())), 20)
+                .stream().map(this::toEntityView).toList();
     }
 
     private List<SemanticMetric> searchMetrics(String query) {
-        Map<UUID, SemanticMetric> result = new java.util.LinkedHashMap<>();
         if (query == null || query.isBlank()) {
             return metrics.search(null);
         }
-        for (String token : tokens(query)) {
-            metrics.search(token).forEach(metric -> result.put(metric.getId(), metric));
-        }
-        return new ArrayList<>(result.values());
+        return embeddings.rank(query, metrics.findAllByOrderByDisplayNameAsc(),
+                metric -> String.join(" ", metric.getDisplayName(), metric.getName(),
+                        nullToEmpty(metric.getBusinessDefinition()), nullToEmpty(metric.getSynonyms()),
+                        nullToEmpty(metric.getTags())), 20);
     }
 
     private List<SemanticTerm> searchTerms(String query) {
-        Map<UUID, SemanticTerm> result = new java.util.LinkedHashMap<>();
         if (query == null || query.isBlank()) {
             return terms.search(null);
         }
-        for (String token : tokens(query)) {
-            terms.search(token).forEach(term -> result.put(term.getId(), term));
-        }
-        return new ArrayList<>(result.values());
+        return embeddings.rank(query, terms.findAllByOrderByTermAsc(),
+                term -> String.join(" ", term.getTerm(), nullToEmpty(term.getDefinition()),
+                        nullToEmpty(term.getSynonyms()), nullToEmpty(term.getTags())), 20);
     }
 
     private List<String> tokens(String query) {

@@ -787,6 +787,62 @@ X-User-Id: zhangsan
 | POST | `/api/memory/{id}/archive` | 归档 |
 | POST | `/api/memory/archive-expired` | 归档过期记忆 |
 
+### `GET/POST /api/memory/candidates`
+
+对话结束自动抽取的候选只进入审核队列，不直接入库。
+
+```http
+GET /api/memory/candidates?status=PENDING
+POST /api/memory/candidates/extract
+{
+  "sessionId": "s-123",
+  "domain": "销售",
+  "summary": "以后 GMV 默认按支付成功订单统计。"
+}
+```
+
+审核：
+
+```http
+POST /api/memory/candidates/{id}/approve
+{
+  "force": false,
+  "promoteToKnowledge": false,
+  "reviewedBy": "alice"
+}
+
+POST /api/memory/candidates/{id}/reject
+{"reviewedBy": "alice", "reason": "口径不明确"}
+```
+
+`approve` 检测到冲突时返回 `approved=false + conflicts`；审核人确认后传 `force=true`。
+
+### `POST /api/feedback`
+
+```json
+{
+  "sessionId": "s-123",
+  "question": "按城市统计 GMV",
+  "originalSql": "SELECT city FROM sales_orders",
+  "correctedSql": "SELECT city, SUM(amount) FROM sales_orders WHERE status = 'PAID' GROUP BY city",
+  "correction": "按城市统计 GMV 时必须过滤 PAID",
+  "domain": "销售",
+  "rating": 5,
+  "reviewer": "alice"
+}
+```
+
+返回：
+
+```json
+{
+  "feedback": { "...": "FeedbackView" },
+  "memory": { "...": "MemoryView" },
+  "verifiedQuery": { "...": "VerifiedQueryView（DRAFT）" },
+  "conflicts": []
+}
+```
+
 ## 11. 运维可观测与 SRE 基准
 
 ### `GET /api/ops/overview`

@@ -545,6 +545,91 @@ const tools = [
     annotations: { readOnlyHint: true },
     handler: () => api('/api/memory/overview'),
   },
+  {
+    name: 'dataagent_extract_memory_candidates',
+    description: '对话结束时自动抽取长期记忆候选（偏好/决策/事实/待确认问题），进入人工审核队列，不会直接入库。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        summary: { type: 'string', description: '本轮对话摘要' },
+        domain: { type: 'string', description: '业务域；提供后候选归入 DOMAIN' },
+        messages: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { role: { type: 'string' }, content: { type: 'string' } },
+            required: ['content'],
+            additionalProperties: false,
+          },
+        },
+      },
+      additionalProperties: false,
+    },
+    handler: (args) => api('/api/memory/candidates/extract', { method: 'POST', body: args }),
+  },
+  {
+    name: 'dataagent_review_memory_candidate',
+    description: '人工审核记忆候选：approve 入库（可强制覆盖冲突），reject 拒绝。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        candidateId: { type: 'string' },
+        action: { type: 'string', enum: ['approve', 'reject'] },
+        force: { type: 'boolean' },
+        promoteToKnowledge: { type: 'boolean' },
+        knowledgeTitle: { type: 'string' },
+        sqlText: { type: 'string' },
+        reviewedBy: { type: 'string' },
+        reason: { type: 'string' },
+      },
+      required: ['candidateId', 'action'],
+      additionalProperties: false,
+    },
+    handler: (args) => {
+      const id = encodeURIComponent(args.candidateId);
+      if (args.action === 'reject') {
+        return api(`/api/memory/candidates/${id}/reject`, {
+          method: 'POST',
+          body: { reviewedBy: args.reviewedBy, reason: args.reason },
+        });
+      }
+      return api(`/api/memory/candidates/${id}/approve`, {
+        method: 'POST',
+        body: {
+          force: args.force,
+          promoteToKnowledge: args.promoteToKnowledge,
+          knowledgeTitle: args.knowledgeTitle,
+          sqlText: args.sqlText,
+          reviewedBy: args.reviewedBy,
+        },
+      });
+    },
+  },
+  {
+    name: 'dataagent_submit_feedback',
+    description: '用户纠错/反馈闭环：一键沉淀为长期记忆，并在提供 correctedSql 时创建 DRAFT verified query。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        question: { type: 'string' },
+        originalSql: { type: 'string' },
+        correctedSql: { type: 'string' },
+        correction: { type: 'string' },
+        rating: { type: 'integer', minimum: 1, maximum: 5 },
+        notes: { type: 'string' },
+        datasourceId: { type: 'string' },
+        metricId: { type: 'string' },
+        entityId: { type: 'string' },
+        domain: { type: 'string' },
+        reviewer: { type: 'string' },
+      },
+      required: ['question', 'correction'],
+      additionalProperties: false,
+    },
+    handler: (args) => api('/api/feedback', { method: 'POST', body: args }),
+  },
 ];
 
 async function firstDatasourceId() {

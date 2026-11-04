@@ -288,6 +288,7 @@ export function SqlStudio({ embedded = false }) {
   const [semanticRelationships, setSemanticRelationships] = React.useState([]);
   const [verifiedQueries, setVerifiedQueries] = React.useState([]);
   const [memories, setMemories] = React.useState([]);
+  const [memoryCandidates, setMemoryCandidates] = React.useState([]);
   const [semanticLoading, setSemanticLoading] = React.useState(false);
   const [semanticQuery, setSemanticQuery] = React.useState('');
   const [semanticSubTab, setSemanticSubTab] = React.useState('entities');
@@ -516,7 +517,7 @@ export function SqlStudio({ embedded = false }) {
   async function loadSemantic(query = semanticQuery) {
     setSemanticLoading(true);
     try {
-      const [overview, entities, metrics, terms, relationships, verified, memoryItems] = await Promise.all([
+      const [overview, entities, metrics, terms, relationships, verified, memoryItems, candidates] = await Promise.all([
         api.semanticOverview(),
         api.semanticEntities(query),
         api.semanticMetrics(query),
@@ -524,6 +525,7 @@ export function SqlStudio({ embedded = false }) {
         api.semanticRelationships(query),
         api.verifiedQueries(query),
         api.memories(query),
+        api.memoryCandidates('PENDING'),
       ]);
       setSemanticOverview(overview);
       setSemanticEntities(entities || []);
@@ -532,6 +534,7 @@ export function SqlStudio({ embedded = false }) {
       setSemanticRelationships(relationships || []);
       setVerifiedQueries(verified || []);
       setMemories(memoryItems || []);
+      setMemoryCandidates(candidates || []);
     } catch (error) {
       showToast(error.message, 'error');
     } finally {
@@ -555,6 +558,33 @@ export function SqlStudio({ embedded = false }) {
     try {
       await api.archiveMemory(id);
       showToast('记忆已归档。', 'success');
+      await loadSemantic();
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+  }
+
+  async function approveMemoryCandidate(id, force = false) {
+    try {
+      const result = await api.approveMemoryCandidate(id, {
+        force,
+        reviewedBy: 'studio',
+      });
+      if (result.approved) {
+        showToast('候选已入库。', 'success');
+      } else {
+        showToast(`检测到 ${result.conflicts?.length || 0} 条冲突记忆，确认后可强制通过。`, 'error');
+      }
+      await loadSemantic();
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+  }
+
+  async function rejectMemoryCandidate(id) {
+    try {
+      await api.rejectMemoryCandidate(id, { reviewedBy: 'studio', reason: '人工审核拒绝' });
+      showToast('候选已拒绝。', 'success');
       await loadSemantic();
     } catch (error) {
       showToast(error.message, 'error');
@@ -1255,6 +1285,7 @@ export function SqlStudio({ embedded = false }) {
                 relationships={semanticRelationships}
                 verifiedQueries={verifiedQueries}
                 memories={memories}
+                memoryCandidates={memoryCandidates}
                 loading={semanticLoading}
                 query={semanticQuery}
                 setQuery={setSemanticQuery}
@@ -1273,6 +1304,8 @@ export function SqlStudio({ embedded = false }) {
                 onOpenSql={(sql) => openSql(sql, '语义层关联 SQL')}
                 onValidateVerified={validateVerifiedQuery}
                 onArchiveMemory={archiveMemory}
+                onApproveMemoryCandidate={approveMemoryCandidate}
+                onRejectMemoryCandidate={rejectMemoryCandidate}
               />
             ) : null}
           </div>
@@ -1828,9 +1861,10 @@ function AssetsPanel({ items, loading, query, setQuery, onSearch, onRefresh, onO
 }
 
 function SemanticPanel({
-  overview, entities, metrics, terms, relationships, verifiedQueries, memories, loading, query, setQuery, subTab, setSubTab,
+  overview, entities, metrics, terms, relationships, verifiedQueries, memories, memoryCandidates, loading, query, setQuery, subTab, setSubTab,
   onSearch, onRefresh, onSync, syncing, designIdea, setDesignIdea, designResult, onDesign,
   designing, onCopy, onOpenSql, onValidateVerified, onArchiveMemory,
+  onApproveMemoryCandidate, onRejectMemoryCandidate,
 }) {
   const subtabs = [
     ['entities', '实体', entities.length],
@@ -2060,6 +2094,32 @@ function SemanticPanel({
         </div>
       )) : null}
 
+      {!loading && subTab === 'memory' && memoryCandidates.length ? (
+        <>
+          <div className="da-kb-section-label">待审核候选 · {memoryCandidates.length}</div>
+          {memoryCandidates.map((candidate) => (
+            <div className="da-kb-card" key={candidate.id}>
+              <div className="da-kb-title">
+                {candidate.memoryKey}
+                <span className="da-status warn">PENDING</span>
+                <span className="da-tag">{candidate.kind}</span>
+              </div>
+              <div className="da-kb-problem">{candidate.content}</div>
+              <div className="da-list-meta">
+                <span>{candidate.scope}{candidate.scopeKey ? `:${candidate.scopeKey}` : ''}</span>
+                <span>置信 {candidate.confidence}</span>
+                {candidate.reason ? <span>{candidate.reason}</span> : null}
+              </div>
+              <div className="da-kb-actions">
+                <button className="da-btn small accent" onClick={() => onApproveMemoryCandidate(candidate.id, false)}>通过</button>
+                <button className="da-btn small ghost" onClick={() => onApproveMemoryCandidate(candidate.id, true)}>强制通过</button>
+                <button className="da-btn small ghost" onClick={() => onRejectMemoryCandidate(candidate.id)}>拒绝</button>
+              </div>
+            </div>
+          ))}
+        </>
+      ) : null}
+
       {!loading && subTab === 'memory' ? memories.map((memory) => (
         <div className="da-kb-card" key={memory.id}>
           <div className="da-kb-title">
@@ -2089,7 +2149,7 @@ function SemanticPanel({
         || (subTab === 'terms' && !terms.length)
         || (subTab === 'relations' && !relationships.length)
         || (subTab === 'verified' && !verifiedQueries.length)
-        || (subTab === 'memory' && !memories.length)) ? (
+        || (subTab === 'memory' && !memories.length && !memoryCandidates.length)) ? (
         <div className="da-tree-empty">语义层暂无匹配内容。可通过 API 新增，或点击“同步知识”建立关联。</div>
       ) : null}
     </div>

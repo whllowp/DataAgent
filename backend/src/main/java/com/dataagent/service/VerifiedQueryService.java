@@ -29,17 +29,20 @@ public class VerifiedQueryService {
     private final SemanticEntityRepository entities;
     private final JdbcQueryService jdbcQueries;
     private final DatasourceService datasources;
+    private final EmbeddingService embeddings;
 
     public VerifiedQueryService(VerifiedQueryRepository queries,
                                 SemanticMetricRepository metrics,
                                 SemanticEntityRepository entities,
                                 JdbcQueryService jdbcQueries,
-                                DatasourceService datasources) {
+                                DatasourceService datasources,
+                                EmbeddingService embeddings) {
         this.queries = queries;
         this.metrics = metrics;
         this.entities = entities;
         this.jdbcQueries = jdbcQueries;
         this.datasources = datasources;
+        this.embeddings = embeddings;
     }
 
     @Transactional(readOnly = true)
@@ -128,9 +131,10 @@ public class VerifiedQueryService {
             found.addAll(queries.findByMetricOrEntity(null, entityId));
         }
         if (!blank(query)) {
-            for (String token : tokenize(query)) {
-                found.addAll(queries.search(token));
-            }
+            found.addAll(embeddings.rank(query, queries.findAll(),
+                    item -> item.getQuestion() + " " + item.getSqlText() + " "
+                            + (item.getTags() == null ? "" : item.getTags()),
+                    8));
         }
         return found.stream()
                 .sorted((left, right) -> Integer.compare(right.getUseCount(), left.getUseCount()))
