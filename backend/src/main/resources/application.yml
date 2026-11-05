@@ -70,6 +70,11 @@ dataagent:
     max-sql-length: 100000
     # Slow queries automatically collect EXPLAIN (never EXPLAIN ANALYZE).
     auto-plan-threshold-ms: 500
+    cache-enabled: ${DATAAGENT_QUERY_CACHE_ENABLED:true}
+    cache-ttl-seconds: ${DATAAGENT_QUERY_CACHE_TTL_SECONDS:30}
+    cache-max-entries: ${DATAAGENT_QUERY_CACHE_MAX_ENTRIES:200}
+    max-concurrent-queries: ${DATAAGENT_MAX_CONCURRENT_QUERIES:16}
+    max-concurrent-per-datasource: ${DATAAGENT_MAX_CONCURRENT_PER_DATASOURCE:4}
   semantic:
     sync-enabled: ${DATAAGENT_SEMANTIC_SYNC_ENABLED:true}
     sync-interval-ms: ${DATAAGENT_SEMANTIC_SYNC_INTERVAL_MS:1800000}

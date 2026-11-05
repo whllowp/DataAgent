@@ -28,7 +28,7 @@ flowchart TB
     direction TB
     Panel["DataAgent SQL 面板<br/>Schema 树 / 编辑器 / 结果 / 历史 / 知识库"]
     DSH["DSH Agent + 大模型"]
-    MCP["MCP stdio bridge<br/>30 个 dataagent_* 工具"]
+    MCP["MCP stdio bridge<br/>33 个 dataagent_* 工具"]
     Panel -->|"HTTPS / REST"| Gateway
     DSH -->|"tool call"| MCP
     MCP -->|"HTTPS / REST"| Gateway
@@ -330,6 +330,15 @@ EXPLAIN <sql>
 - **反馈闭环**：`agent_feedback` → 长期记忆 + DRAFT verified query
 - **向量召回**：本地 hashed n-gram embedding + cosine，替换纯 tokenize 检索
 
+### 3.17 生产治理层
+
+- **审计**：`audit_event` 追加表，`REQUIRES_NEW` 独立事务；记录 SQL 执行/拦截、数据源变更、记忆审核、反馈
+- **查询缓存**：短 TTL 内存缓存，key 含 datasource/sql/maxRows/includePlan；数据源变更失效；`fresh=true` 绕过
+- **并发保护**：全局 + 数据源级 Semaphore，超限 429
+- **血缘**：从 SQL 资产/Verified Query 提取表引用（识别 CTE），结合 `semantic_entity.physical_tables` 做影响分析
+
+详见 [GOVERNANCE.md](GOVERNANCE.md)。
+
 ## 4. 数据模型
 
 ```mermaid
@@ -434,6 +443,10 @@ V7 新增：
 
 - `memory_candidate`：对话抽取候选与人工审核状态。
 - `agent_feedback`：用户纠错、评分与 memory/verified query 关联。
+
+V8 新增：
+
+- `audit_event`：不可变治理审计事件。
 
 ## 5. 关键流程
 
@@ -600,6 +613,9 @@ dsh-plugin/
 | `dataagent_extract_memory_candidates` | 对话抽取候选 |
 | `dataagent_review_memory_candidate` | 审核候选 |
 | `dataagent_submit_feedback` | 纠错反馈闭环 |
+| `dataagent_audit_overview` | 审计概览 |
+| `dataagent_audit_search` | 审计检索 |
+| `dataagent_lineage_impact` | 表级影响分析 |
 
 所有工具最终受云端的只读网关约束；模型不能通过 MCP 绕过 `SqlGuard`。
 

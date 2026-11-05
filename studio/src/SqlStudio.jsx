@@ -1421,6 +1421,7 @@ function ResultsPane({
           <span>取数 <strong>{formatDuration(result.fetchMs)}</strong></span>
           <span><strong>{result.rowCount}</strong> 行</span>
           {result.truncated ? <span className="da-status warn">已截断</span> : null}
+          {result.cacheHit ? <span className="da-status ok">缓存命中</span> : null}
           <span>查询 <span className="da-mono">{String(result.queryId || '').slice(0, 8)}</span></span>
           <span style={{ marginLeft: 'auto' }}>{datasourceName}</span>
         </div>
@@ -2276,6 +2277,8 @@ function OpsModal({ data, loading, error, runningBenchmarks, onRefresh, onRunBen
             <div className="da-ops-card"><span>慢查询</span><strong>{data.slowQueries}</strong><small>阈值以上</small></div>
             <div className="da-ops-card"><span>JVM 堆</span><strong>{formatBytes(data.heapUsedBytes)}</strong><small>最大 {formatBytes(data.heapMaxBytes)} · {data.threadCount} 线程</small></div>
             <div className="da-ops-card"><span>数据源</span><strong>{data.datasourceCount}</strong><small>{data.pools?.length || 0} 个连接池</small></div>
+            <div className="da-ops-card"><span>查询缓存</span><strong>{data.cache?.hits ?? 0}</strong><small>命中 · 未命中 {data.cache?.misses ?? 0} · TTL {data.cache?.ttlSeconds ?? 0}s</small></div>
+            <div className="da-ops-card"><span>审计 24h</span><strong>{data.audit?.last24h ?? 0}</strong><small>失败 {data.audit?.failed24h ?? 0} · 拦截 {data.audit?.blocked24h ?? 0}</small></div>
             <div className="da-ops-card"><span>SRE 基准</span><strong>{data.benchmarks?.active ?? 0}/{data.benchmarks?.total ?? 0}</strong><small>失败 {data.benchmarks?.failedLastRun ?? 0} · 慢 {data.benchmarks?.slowLastRun ?? 0} · 下次 {data.nextScheduledBenchmark ? formatTime(data.nextScheduledBenchmark) : '待运行'}</small></div>
           </div>
 

@@ -19,12 +19,14 @@ public class FeedbackService {
     private final AgentFeedbackRepository feedbacks;
     private final MemoryService memories;
     private final VerifiedQueryService verifiedQueries;
+    private final AuditService audit;
 
     public FeedbackService(AgentFeedbackRepository feedbacks, MemoryService memories,
-                           VerifiedQueryService verifiedQueries) {
+                           VerifiedQueryService verifiedQueries, AuditService audit) {
         this.feedbacks = feedbacks;
         this.memories = memories;
         this.verifiedQueries = verifiedQueries;
+        this.audit = audit;
     }
 
     @Transactional
@@ -79,6 +81,8 @@ public class FeedbackService {
             feedback.setVerifiedQueryId(verified.id());
         }
         feedbacks.save(feedback);
+        audit.record("FEEDBACK_SUBMIT", "SUCCESS", "FEEDBACK", feedback.getId(), request.datasourceId(),
+                "memoryId=" + feedback.getMemoryId() + " verifiedQueryId=" + feedback.getVerifiedQueryId());
         return new FeedbackDtos.Result(view(feedback), memoryResult.memory(), verified,
                 memoryResult.conflicts());
     }

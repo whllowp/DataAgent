@@ -42,11 +42,15 @@ public class JdbcQueryService {
     private final DataAgentProperties properties;
     private final SqlAssetService sqlAssets;
     private final MeterRegistry meterRegistry;
+    private final QueryResultCache cache;
+    private final QueryConcurrencyLimiter concurrency;
+    private final AuditService audit;
 
     public JdbcQueryService(DatasourceService datasources, SqlGuard guard, PlanService planService,
                             ResultValueConverter valueConverter, QueryExecutionRepository executions,
                             DataAgentProperties properties, SqlAssetService sqlAssets,
-                            MeterRegistry meterRegistry) {
+                            MeterRegistry meterRegistry, QueryResultCache cache,
+                            QueryConcurrencyLimiter concurrency, AuditService audit) {
         this.datasources = datasources;
         this.guard = guard;
         this.planService = planService;
@@ -55,18 +59,35 @@ public class JdbcQueryService {
         this.properties = properties;
         this.sqlAssets = sqlAssets;
         this.meterRegistry = meterRegistry;
+        this.cache = cache;
+        this.concurrency = concurrency;
+        this.audit = audit;
     }
 
     public SqlDtos.QueryResult execute(UUID datasourceId, String rawSql, Integer maxRows,
                                        Integer timeoutSeconds, boolean includePlan,
                                        String user, String problem, String tags) {
-        return execute(datasourceId, rawSql, maxRows, timeoutSeconds, includePlan, true, user, problem, tags);
+        return execute(datasourceId, rawSql, maxRows, timeoutSeconds, includePlan, true, false,
+                user, problem, tags);
     }
 
     public SqlDtos.QueryResult execute(UUID datasourceId, String rawSql, Integer maxRows,
                                        Integer timeoutSeconds, boolean includePlan, boolean autoPlan,
                                        String user, String problem, String tags) {
-        SqlGuard.GuardedSql guarded = guard.guardForExecution(rawSql);
+        return execute(datasourceId, rawSql, maxRows, timeoutSeconds, includePlan, autoPlan, false,
+                user, problem, tags);
+    }
+
+    public SqlDtos.QueryResult execute(UUID datasourceId, String rawSql, Integer maxRows,
+                                       Integer timeoutSeconds, boolean includePlan, boolean autoPlan,
+                                       boolean fresh, String user, String problem, String tags) {
+        SqlGuard.GuardedSql guarded;
+        try {
+            guarded = guard.guardForExecution(rawSql);
+        } catch (ApiException blocked) {
+            audit.record("SQL_BLOCKED", "ERROR", "SQL", null, datasourceId, blocked.getMessage());
+            throw blocked;
+        }
         Datasource datasource = datasources.getRequired(datasourceId);
         DbDialect dialect = DbDialect.from(datasource.getDialect());
         int limit = Math.min(maxRows == null ? datasource.getMaxRows() : maxRows,
@@ -75,6 +96,15 @@ public class JdbcQueryService {
         int timeout = Math.min(timeoutSeconds == null ? datasource.getQueryTimeoutSeconds() : timeoutSeconds,
                 properties.getQuery().getHardTimeoutSeconds());
         timeout = Math.max(1, timeout);
+        String cacheKey = cache.key(datasourceId, guarded.sql(), limit, includePlan, autoPlan);
+        if (!fresh) {
+            SqlDtos.QueryResult cached = cache.get(cacheKey);
+            if (cached != null) {
+                audit.record("SQL_EXECUTE", "SUCCESS", "SQL", cached.queryId(), datasourceId,
+                        "cache=HIT fingerprint=" + guarded.fingerprint() + " rows=" + cached.rowCount());
+                return cached;
+            }
+        }
 
         UUID queryId = UUID.randomUUID();
         Instant executedAt = Instant.now();
@@ -86,63 +116,68 @@ public class JdbcQueryService {
         SqlDtos.PlanView plan = null;
         String error = null;
 
-        DataSource dataSource = datasources.dataSourceFor(datasourceId);
-        try (Connection connection = dataSource.getConnection()) {
-            connection.setReadOnly(datasource.isReadOnly());
-            connection.setAutoCommit(false);
-            try (Statement statement = connection.createStatement()) {
-                statement.setQueryTimeout(timeout);
-                statement.setMaxRows(limit + 1);
-                statement.setFetchSize(Math.min(limit, 500));
-                try (ResultSet resultSet = statement.executeQuery(guarded.sql())) {
-                    long queryDone = System.nanoTime();
-                    ResultSetMetaData metaData = resultSet.getMetaData();
-                    int columnCount = metaData.getColumnCount();
-                    for (int i = 1; i <= columnCount; i++) {
-                        columns.add(new SqlDtos.ColumnMeta(
-                                metaData.getColumnName(i),
-                                metaData.getColumnLabel(i),
-                                metaData.getColumnTypeName(i),
-                                metaData.getColumnClassName(i),
-                                metaData.getColumnType(i)));
-                    }
-                    int count = 0;
-                    while (count < limit && resultSet.next()) {
-                        List<Object> row = new ArrayList<>(columnCount);
+        try (QueryConcurrencyLimiter.Lease lease = concurrency.acquire(datasourceId)) {
+            DataSource dataSource = datasources.dataSourceFor(datasourceId);
+            try (Connection connection = dataSource.getConnection()) {
+                connection.setReadOnly(datasource.isReadOnly());
+                connection.setAutoCommit(false);
+                try (Statement statement = connection.createStatement()) {
+                    statement.setQueryTimeout(timeout);
+                    statement.setMaxRows(limit + 1);
+                    statement.setFetchSize(Math.min(limit, 500));
+                    try (ResultSet resultSet = statement.executeQuery(guarded.sql())) {
+                        long queryDone = System.nanoTime();
+                        ResultSetMetaData metaData = resultSet.getMetaData();
+                        int columnCount = metaData.getColumnCount();
                         for (int i = 1; i <= columnCount; i++) {
-                            row.add(valueConverter.convert(resultSet, i, metaData.getColumnType(i),
-                                    properties.getQuery().getMaxCellChars()));
+                            columns.add(new SqlDtos.ColumnMeta(
+                                    metaData.getColumnName(i),
+                                    metaData.getColumnLabel(i),
+                                    metaData.getColumnTypeName(i),
+                                    metaData.getColumnClassName(i),
+                                    metaData.getColumnType(i)));
                         }
-                        rows.add(row);
-                        count++;
+                        int count = 0;
+                        while (count < limit && resultSet.next()) {
+                            List<Object> row = new ArrayList<>(columnCount);
+                            for (int i = 1; i <= columnCount; i++) {
+                                row.add(valueConverter.convert(resultSet, i, metaData.getColumnType(i),
+                                        properties.getQuery().getMaxCellChars()));
+                            }
+                            rows.add(row);
+                            count++;
+                        }
+                        truncated = resultSet.next();
+                        fetchMs = (System.nanoTime() - queryDone) / 1_000_000;
+                    } catch (SQLException queryError) {
+                        error = friendlyError(queryError, timeout);
                     }
-                    truncated = resultSet.next();
-                    fetchMs = (System.nanoTime() - queryDone) / 1_000_000;
-                } catch (SQLException queryError) {
-                    error = friendlyError(queryError, timeout);
-                }
 
-                if (error == null && supportsPlan(guarded.statementType())) {
-                    long beforePlanMs = (System.nanoTime() - start) / 1_000_000;
-                    boolean shouldPlan = includePlan
-                            || (autoPlan && beforePlanMs >= properties.getQuery().getAutoPlanThresholdMs());
-                    if (shouldPlan) {
-                        try {
-                            plan = planService.explain(connection, dialect, guarded.sql());
-                        } catch (Exception planError) {
-                            log.debug("Plan collection failed for {}", queryId, planError);
+                    if (error == null && supportsPlan(guarded.statementType())) {
+                        long beforePlanMs = (System.nanoTime() - start) / 1_000_000;
+                        boolean shouldPlan = includePlan
+                                || (autoPlan && beforePlanMs >= properties.getQuery().getAutoPlanThresholdMs());
+                        if (shouldPlan) {
+                            try {
+                                plan = planService.explain(connection, dialect, guarded.sql());
+                            } catch (Exception planError) {
+                                log.debug("Plan collection failed for {}", queryId, planError);
+                            }
                         }
                     }
+                } finally {
+                    try {
+                        connection.rollback();
+                    } catch (SQLException ignored) {
+                        // read-only work; rollback is best effort
+                    }
                 }
-            } finally {
-                try {
-                    connection.rollback();
-                } catch (SQLException ignored) {
-                    // read-only work; rollback is best effort
-                }
+            } catch (SQLException e) {
+                error = friendlyError(e, timeout);
             }
-        } catch (SQLException e) {
-            error = friendlyError(e, timeout);
+        } catch (ApiException busy) {
+            audit.record("SQL_BLOCKED", "ERROR", "SQL", null, datasourceId, busy.getMessage());
+            throw busy;
         }
 
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
@@ -178,8 +213,15 @@ public class JdbcQueryService {
             log.info("Query {} failed in {} ms: {}", queryId, elapsedMs, error);
         }
         recordMetrics(dialect, status, elapsedMs);
-        return new SqlDtos.QueryResult(queryId, status, columns, rows, rows.size(), truncated,
-                elapsedMs, fetchMs, plan, error, executedAt);
+        SqlDtos.QueryResult result = new SqlDtos.QueryResult(queryId, status, columns, rows, rows.size(),
+                truncated, elapsedMs, fetchMs, plan, error, executedAt, false);
+        if (error == null) {
+            cache.put(cacheKey, result);
+        }
+        audit.record("SQL_EXECUTE", status, "SQL", queryId, datasourceId,
+                "cache=MISS fingerprint=" + guarded.fingerprint() + " rows=" + rows.size()
+                        + " elapsedMs=" + elapsedMs);
+        return result;
     }
 
     private void recordMetrics(DbDialect dialect, String status, long elapsedMs) {
@@ -201,7 +243,13 @@ public class JdbcQueryService {
     }
 
     public SqlDtos.ExplainResult explain(UUID datasourceId, String rawSql, String user) {
-        SqlGuard.GuardedSql guarded = guard.guardForExplain(rawSql);
+        SqlGuard.GuardedSql guarded;
+        try {
+            guarded = guard.guardForExplain(rawSql);
+        } catch (ApiException blocked) {
+            audit.record("SQL_BLOCKED", "ERROR", "SQL", null, datasourceId, blocked.getMessage());
+            throw blocked;
+        }
         Datasource datasource = datasources.getRequired(datasourceId);
         DbDialect dialect = DbDialect.from(datasource.getDialect());
         UUID queryId = UUID.randomUUID();
@@ -234,6 +282,8 @@ public class JdbcQueryService {
             execution.setErrorMessage(e.getMessage());
             execution.setCreatedAt(executedAt);
             executions.save(execution);
+            audit.record("SQL_EXPLAIN", "ERROR", "SQL", queryId, datasourceId,
+                    "fingerprint=" + guarded.fingerprint() + " error=" + e.getMessage());
             throw ApiException.badRequest("获取执行计划失败: " + e.getMessage());
         }
 
@@ -251,6 +301,8 @@ public class JdbcQueryService {
         execution.setPlanFormat(plan.format());
         execution.setCreatedAt(executedAt);
         executions.save(execution);
+        audit.record("SQL_EXPLAIN", "SUCCESS", "SQL", queryId, datasourceId,
+                "fingerprint=" + guarded.fingerprint() + " elapsedMs=" + elapsed);
         return new SqlDtos.ExplainResult(queryId, plan);
     }
 

@@ -61,7 +61,9 @@ public final class OpsDtos {
             Instant nextScheduledBenchmark,
             long benchmarkIntervalMs,
             List<ErrorRow> recentErrors,
-            String prometheusPath
+            String prometheusPath,
+            com.dataagent.service.QueryResultCache.CacheStats cache,
+            com.dataagent.web.dto.AuditDtos.Overview audit
     ) {
     }
 }

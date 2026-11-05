@@ -28,17 +28,23 @@ public class OpsService {
     private final SemanticSyncRunRepository syncRuns;
     private final SqlBenchmarkCaseRepository benchmarks;
     private final DataAgentProperties properties;
+    private final QueryResultCache queryCache;
+    private final AuditService audit;
 
     public OpsService(QueryExecutionRepository executions,
                       DatasourceService datasources,
                       SemanticSyncRunRepository syncRuns,
                       SqlBenchmarkCaseRepository benchmarks,
-                      DataAgentProperties properties) {
+                      DataAgentProperties properties,
+                      QueryResultCache queryCache,
+                      AuditService audit) {
         this.executions = executions;
         this.datasources = datasources;
         this.syncRuns = syncRuns;
         this.benchmarks = benchmarks;
         this.properties = properties;
+        this.queryCache = queryCache;
+        this.audit = audit;
     }
 
     public OpsDtos.OpsOverview overview() {
@@ -109,7 +115,9 @@ public class OpsService {
                 nextBenchmarkRun,
                 properties.getBenchmark().getSyncIntervalMs(),
                 recentErrors,
-                "/actuator/prometheus"
+                "/actuator/prometheus",
+                queryCache.stats(),
+                audit.overview()
         );
     }
 

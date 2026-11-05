@@ -24,8 +24,8 @@ public class SqlController {
     public SqlDtos.QueryResult execute(@Valid @RequestBody SqlDtos.ExecuteRequest request,
                                        @RequestAttribute(name = ApiTokenFilter.USER_ATTRIBUTE) String user) {
         return queries.execute(request.datasourceId(), request.sql(), request.maxRows(),
-                request.timeoutSeconds(), Boolean.TRUE.equals(request.includePlan()),
-                user, request.problem(), request.tags());
+                request.timeoutSeconds(), Boolean.TRUE.equals(request.includePlan()), true,
+                Boolean.TRUE.equals(request.fresh()), user, request.problem(), request.tags());
     }
 
     @PostMapping("/explain")

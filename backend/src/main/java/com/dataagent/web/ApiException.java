@@ -35,6 +35,10 @@ public class ApiException extends RuntimeException {
         return new ApiException(HttpStatus.BAD_GATEWAY, "UPSTREAM_ERROR", message, cause);
     }
 
+    public static ApiException tooManyRequests(String message) {
+        return new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY_REQUESTS", message);
+    }
+
     public HttpStatus getStatus() {
         return status;
     }

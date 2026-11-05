@@ -100,6 +100,11 @@ public class DataAgentProperties {
         private int maxSqlLength = 100_000;
         private int maxCellChars = 20_000;
         private long autoPlanThresholdMs = 500;
+        private boolean cacheEnabled = true;
+        private long cacheTtlSeconds = 30;
+        private int cacheMaxEntries = 200;
+        private int maxConcurrentQueries = 16;
+        private int maxConcurrentPerDatasource = 4;
 
         public int getDefaultMaxRows() {
             return defaultMaxRows;
@@ -155,6 +160,46 @@ public class DataAgentProperties {
 
         public void setAutoPlanThresholdMs(long autoPlanThresholdMs) {
             this.autoPlanThresholdMs = autoPlanThresholdMs;
+        }
+
+        public boolean isCacheEnabled() {
+            return cacheEnabled;
+        }
+
+        public void setCacheEnabled(boolean cacheEnabled) {
+            this.cacheEnabled = cacheEnabled;
+        }
+
+        public long getCacheTtlSeconds() {
+            return cacheTtlSeconds;
+        }
+
+        public void setCacheTtlSeconds(long cacheTtlSeconds) {
+            this.cacheTtlSeconds = cacheTtlSeconds;
+        }
+
+        public int getCacheMaxEntries() {
+            return cacheMaxEntries;
+        }
+
+        public void setCacheMaxEntries(int cacheMaxEntries) {
+            this.cacheMaxEntries = cacheMaxEntries;
+        }
+
+        public int getMaxConcurrentQueries() {
+            return maxConcurrentQueries;
+        }
+
+        public void setMaxConcurrentQueries(int maxConcurrentQueries) {
+            this.maxConcurrentQueries = maxConcurrentQueries;
+        }
+
+        public int getMaxConcurrentPerDatasource() {
+            return maxConcurrentPerDatasource;
+        }
+
+        public void setMaxConcurrentPerDatasource(int maxConcurrentPerDatasource) {
+            this.maxConcurrentPerDatasource = maxConcurrentPerDatasource;
         }
     }
 

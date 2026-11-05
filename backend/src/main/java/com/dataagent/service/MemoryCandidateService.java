@@ -28,10 +28,13 @@ public class MemoryCandidateService {
 
     private final MemoryCandidateRepository candidates;
     private final MemoryService memories;
+    private final AuditService audit;
 
-    public MemoryCandidateService(MemoryCandidateRepository candidates, MemoryService memories) {
+    public MemoryCandidateService(MemoryCandidateRepository candidates, MemoryService memories,
+                                  AuditService audit) {
         this.candidates = candidates;
         this.memories = memories;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -135,6 +138,8 @@ public class MemoryCandidateService {
         candidate.setReviewedBy(request == null ? "memory-review" : request.reviewedBy());
         candidate.setReviewedAt(Instant.now());
         candidates.save(candidate);
+        audit.record("MEMORY_CANDIDATE_APPROVE", "SUCCESS", "MEMORY_CANDIDATE", candidate.getId(), null,
+                "memoryKey=" + candidate.getMemoryKey() + " memoryId=" + candidate.getMemoryId());
         return new MemoryCandidateDtos.ApproveResult(view(candidate), result.memory(),
                 result.knowledge(), result.conflicts(), true);
     }
@@ -149,6 +154,8 @@ public class MemoryCandidateService {
             candidate.setReason(truncate(request.reason(), 500));
         }
         candidates.save(candidate);
+        audit.record("MEMORY_CANDIDATE_REJECT", "SUCCESS", "MEMORY_CANDIDATE", candidate.getId(), null,
+                "memoryKey=" + candidate.getMemoryKey());
         return new MemoryCandidateDtos.RejectResult(view(candidate));
     }
 

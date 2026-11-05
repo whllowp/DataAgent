@@ -39,12 +39,18 @@ public class DatasourceService {
     private final DatasourceRepository repository;
     private final SecretCipher cipher;
     private final DataAgentProperties properties;
+    private final QueryResultCache queryCache;
+    private final AuditService audit;
     private final Map<UUID, HikariDataSource> pools = new ConcurrentHashMap<>();
 
-    public DatasourceService(DatasourceRepository repository, SecretCipher cipher, DataAgentProperties properties) {
+    public DatasourceService(DatasourceRepository repository, SecretCipher cipher,
+                             DataAgentProperties properties, QueryResultCache queryCache,
+                             AuditService audit) {
         this.repository = repository;
         this.cipher = cipher;
         this.properties = properties;
+        this.queryCache = queryCache;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -87,6 +93,8 @@ public class DatasourceService {
         datasource.setDescription(blankToNull(request.description()));
         repository.save(datasource);
         log.info("Registered datasource {} ({}, {})", datasource.getName(), dialect, datasource.getId());
+        audit.record("DATASOURCE_CREATE", "SUCCESS", "DATASOURCE", datasource.getId(), datasource.getId(),
+                "name=" + datasource.getName() + " dialect=" + dialect);
         return toView(datasource);
     }
 
@@ -112,6 +120,8 @@ public class DatasourceService {
         datasource.setDescription(blankToNull(request.description()));
         repository.save(datasource);
         evict(id);
+        audit.record("DATASOURCE_UPDATE", "SUCCESS", "DATASOURCE", datasource.getId(), datasource.getId(),
+                "name=" + datasource.getName() + " dialect=" + datasource.getDialect());
         return toView(datasource);
     }
 
@@ -122,6 +132,7 @@ public class DatasourceService {
         }
         repository.deleteById(id);
         evict(id);
+        audit.record("DATASOURCE_DELETE", "SUCCESS", "DATASOURCE", id, id, "datasource deleted");
     }
 
     @Transactional(readOnly = true)
@@ -226,6 +237,7 @@ public class DatasourceService {
         if (pool != null) {
             pool.close();
         }
+        queryCache.invalidate(id);
     }
 
     @PreDestroy

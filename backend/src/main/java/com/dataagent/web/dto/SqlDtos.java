@@ -22,7 +22,8 @@ public final class SqlDtos {
             @Min(1) @Max(60) Integer timeoutSeconds,
             Boolean includePlan,
             @Size(max = 2000) String problem,
-            @Size(max = 500) String tags
+            @Size(max = 500) String tags,
+            Boolean fresh
     ) {
     }
 
@@ -52,7 +53,8 @@ public final class SqlDtos {
             long fetchMs,
             PlanView plan,
             String message,
-            Instant executedAt
+            Instant executedAt,
+            boolean cacheHit
     ) {
     }
 

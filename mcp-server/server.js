@@ -630,6 +630,47 @@ const tools = [
     },
     handler: (args) => api('/api/feedback', { method: 'POST', body: args }),
   },
+  {
+    name: 'dataagent_audit_overview',
+    description: '查看最近 24 小时审计概览：操作数、失败数、SQL 拦截数、Top 动作。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    handler: () => api('/api/audit/overview'),
+  },
+  {
+    name: 'dataagent_audit_search',
+    description: '检索不可变审计事件，用于合规排查：谁在何时对哪个数据源执行了什么操作。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        actor: { type: 'string' },
+        action: { type: 'string' },
+        status: { type: 'string' },
+        limit: { type: 'integer', minimum: 1, maximum: 500 },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => {
+      const params = new URLSearchParams();
+      ['actor', 'action', 'status', 'limit'].forEach((key) => {
+        if (args[key] != null) params.set(key, String(args[key]));
+      });
+      return api(`/api/audit?${params.toString()}`);
+    },
+  },
+  {
+    name: 'dataagent_lineage_impact',
+    description: '查看某张物理表的影响面：关联 SQL 资产、Verified Query 和语义实体；用于变更前影响分析。',
+    inputSchema: {
+      type: 'object',
+      properties: { table: { type: 'string' } },
+      required: ['table'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => api(`/api/lineage/impact?table=${encodeURIComponent(args.table)}`),
+  },
 ];
 
 async function firstDatasourceId() {

@@ -11,9 +11,12 @@ import com.dataagent.service.JdbcQueryService;
 import com.dataagent.service.OptimizationService;
 import com.dataagent.service.OpsService;
 import com.dataagent.service.BenchmarkService;
+import com.dataagent.service.AuditService;
 import com.dataagent.service.FeedbackService;
+import com.dataagent.service.LineageService;
 import com.dataagent.service.MemoryCandidateService;
 import com.dataagent.service.MemoryService;
+import com.dataagent.service.QueryResultCache;
 import com.dataagent.service.SemanticService;
 import com.dataagent.service.SemanticSyncService;
 import com.dataagent.service.SqlAssetService;
@@ -90,6 +93,12 @@ class DataAgentIntegrationTest {
     private MemoryCandidateService memoryCandidates;
     @Autowired
     private FeedbackService feedbacks;
+    @Autowired
+    private QueryResultCache queryCache;
+    @Autowired
+    private LineageService lineage;
+    @Autowired
+    private AuditService audit;
     @Autowired
     private MockMvc mockMvc;
 
@@ -290,6 +299,37 @@ class DataAgentIntegrationTest {
         assertNotNull(result.verifiedQuery());
         assertEquals("DRAFT", result.verifiedQuery().status());
         assertNotNull(result.feedback().verifiedQueryId());
+    }
+
+    @Test
+    void cachesRepeatedQueryAndAuditsIt() {
+        String alias = "cache_probe_" + System.nanoTime();
+        String sql = "SELECT COUNT(*) AS " + alias + " FROM customers";
+        SqlDtos.QueryResult first = queries.execute(demo.getId(), sql, 100, null, false,
+                "tester", "cache probe", "test");
+        SqlDtos.QueryResult second = queries.execute(demo.getId(), sql, 100, null, false,
+                "tester", "cache probe", "test");
+        assertFalse(first.cacheHit());
+        assertTrue(second.cacheHit());
+        assertEquals(first.rowCount(), second.rowCount());
+
+        audit.record("TEST_AUDIT", "SUCCESS", "TEST", null, demo.getId(), "probe");
+        assertFalse(audit.search("system", "TEST_AUDIT", null, null, null, null, 10, 0).isEmpty());
+        assertNotNull(ops.overview().cache());
+        assertNotNull(ops.overview().audit());
+    }
+
+    @Test
+    void extractsLineageAndImpact() {
+        var tables = lineage.extractTables(
+                "WITH x AS (SELECT * FROM sales_orders) SELECT * FROM x JOIN customers c ON c.id = x.customer_id");
+        assertTrue(tables.contains("SALES_ORDERS"));
+        assertTrue(tables.contains("CUSTOMERS"));
+        assertFalse(tables.contains("X"));
+
+        assertFalse(lineage.impact("sales_orders").assets().isEmpty());
+        assertFalse(lineage.impact("sales_orders").semanticEntities().isEmpty());
+        assertFalse(lineage.tables().isEmpty());
     }
 
     @Test

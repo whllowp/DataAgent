@@ -1021,7 +1021,58 @@ Prometheus 指标：
 | 502 | `UPSTREAM_ERROR` | 上游/数据库错误（部分场景返回 200 + status=ERROR） |
 | 500 | `INTERNAL_ERROR` | 未预期异常 |
 
-## 14. curl 速查
+## 14. 审计、缓存与血缘
+
+### `GET /api/audit`
+
+```http
+GET /api/audit?actor=alice&action=SQL_EXECUTE&status=ERROR&limit=100&offset=0
+```
+
+返回不可变审计事件：actor、action、resource、datasourceId、status、detail、clientIp、createdAt。
+
+### `GET /api/audit/overview`
+
+```json
+{
+  "last24h": 120,
+  "failed24h": 3,
+  "blocked24h": 2,
+  "topActions": [
+    {"action": "SQL_EXECUTE", "count": 96}
+  ]
+}
+```
+
+### `GET /api/ops/cache`
+
+```json
+{
+  "hits": 42,
+  "misses": 8,
+  "puts": 8,
+  "evictions": 0,
+  "size": 8,
+  "maxEntries": 200,
+  "ttlSeconds": 30
+}
+```
+
+`POST /api/ops/cache/clear` 清空缓存并记录审计。
+
+### `GET /api/lineage/tables`
+
+返回 SQL 资产、Verified Query、语义实体涉及的表汇总。
+
+### `GET /api/lineage/impact?table=SALES_ORDERS`
+
+返回：
+
+- `assets`：引用该表的 SQL 资产
+- `verifiedQueries`：引用该表的已验证查询
+- `semanticEntities`：`physicalTables` 包含该表的实体
+
+## 15. curl 速查
 
 ```bash
 TOKEN=dataagent-dev-token
@@ -1070,4 +1121,10 @@ curl -s "$BASE/api/memory?q=GMV" -H "X-API-Key: $TOKEN"
 curl -s -X POST "$BASE/api/memory" \
   -H "X-API-Key: $TOKEN" -H "Content-Type: application/json" \
   -d '{"scope":"GLOBAL","kind":"PREFERENCE","key":"gmv.definition","content":"GMV 按支付成功订单统计"}'
+
+curl -s "$BASE/api/audit/overview" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/ops/cache" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/lineage/impact?table=SALES_ORDERS" -H "X-API-Key: $TOKEN"
 ```
