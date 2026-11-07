@@ -1422,6 +1422,7 @@ function ResultsPane({
           <span><strong>{result.rowCount}</strong> 行</span>
           {result.truncated ? <span className="da-status warn">已截断</span> : null}
           {result.cacheHit ? <span className="da-status ok">缓存命中</span> : null}
+          {result.piiMaskedColumns?.length ? <span className="da-status warn">PII 已脱敏</span> : null}
           <span>查询 <span className="da-mono">{String(result.queryId || '').slice(0, 8)}</span></span>
           <span style={{ marginLeft: 'auto' }}>{datasourceName}</span>
         </div>

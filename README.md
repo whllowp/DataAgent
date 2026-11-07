@@ -29,7 +29,13 @@
    - **反馈闭环**：用户纠错一键沉淀为长期记忆 + DRAFT Verified Query
    - **审计与治理**：SQL 执行/拦截、数据源变更、记忆审核、反馈等不可变审计事件
    - **查询缓存与并发保护**：短 TTL 结果缓存、全局/数据源级并发上限、429 背压
-   - **表级血缘**：SQL 资产、Verified Query、语义实体与物理表的双向影响分析
+   - **表级/字段级血缘**：SQL 资产、Verified Query、语义实体与物理表/字段的影响分析
+   - **API Key 分权与租户隔离**：READ / EXECUTE / ADMIN，数据源 ACL，租户级数据源隔离
+   - **PII 分类与脱敏**：邮箱/手机/身份证/银行卡/姓名/地址自动识别并在结果集脱敏
+   - **韧性**：数据源熔断、瞬时错误重试一次、慢查询自动限流
+   - **Redis 可选**：集群级缓存与并发配额；未启用时回退本地实现
+   - **审计导出**：JSONL 文件、SIEM webhook、对象存储；保留策略自动清理
+   - **OpenAPI + CI**：`/v3/api-docs` 契约测试，GitHub Actions 后端测试 + Studio 构建
    - **向量召回**：语义层/记忆/已验证查询使用本地 hashed embedding + cosine 排序，替代纯关键词
    - **定期互通**：语义层与知识库、SQL 资产定时同步，也可手动触发
    - **运维可观测**：查询耗时/失败/慢查询、连接池、JVM、语义同步与 SRE 基准状态；Prometheus 指标 `/actuator/prometheus`
@@ -46,7 +52,7 @@
    - 同一个 React 组件也构建为独立页面：`http://127.0.0.1:8080/studio/`
 
 3. **DSH 大模型 + MCP 工具**
-   - **33 个 `dataagent_*` MCP 工具**：列数据源、看表结构、只读执行、取计划、分析、对比、搜知识库、保存知识、标记解决、查历史、看统计，以及 SQL 资产、语义上下文、设计助手、语义沉淀、手动同步、运维概览、SRE 基准、已验证查询、长期记忆、候选审核、反馈闭环、审计与血缘
+   - **35 个 `dataagent_*` MCP 工具**：列数据源、看表结构、只读执行、取计划、分析、对比、搜知识库、保存知识、标记解决、查历史、看统计，以及 SQL 资产、语义上下文、设计助手、语义沉淀、手动同步、运维概览、SRE 基准、已验证查询、长期记忆、候选审核、反馈闭环、审计、血缘、PII
    - 面板生成包含 SQL、真实计划、静态发现和约束的 Prompt
    - 模型可继续调用工具验证，而不是凭空给建议
    - 验证后的结论可回写知识库与语义层
@@ -102,7 +108,7 @@ flowchart LR
   SEM --> SYNC
 ```
 
-更完整的设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，语义层见 [docs/SEMANTIC.md](docs/SEMANTIC.md)，长期记忆见 [docs/MEMORY.md](docs/MEMORY.md)，治理/缓存/血缘见 [docs/GOVERNANCE.md](docs/GOVERNANCE.md)，业界对标见 [docs/INDUSTRY-BENCHMARK.md](docs/INDUSTRY-BENCHMARK.md)，接口见 [docs/API.md](docs/API.md)，DSH 集成见 [docs/DSH-INTEGRATION.md](docs/DSH-INTEGRATION.md)。
+更完整的设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，语义层见 [docs/SEMANTIC.md](docs/SEMANTIC.md)，长期记忆见 [docs/MEMORY.md](docs/MEMORY.md)，治理/缓存/血缘见 [docs/GOVERNANCE.md](docs/GOVERNANCE.md)，安全/租户/PII 见 [docs/SECURITY.md](docs/SECURITY.md)，韧性/Redis 见 [docs/RESILIENCE.md](docs/RESILIENCE.md)，业界对标见 [docs/INDUSTRY-BENCHMARK.md](docs/INDUSTRY-BENCHMARK.md)，接口见 [docs/API.md](docs/API.md)，DSH 集成见 [docs/DSH-INTEGRATION.md](docs/DSH-INTEGRATION.md)。
 
 > **语义层演示口径**：内置 GMV、客单价、订单量、有效订单、渠道、大促等定义是示例，`owner=demo`、`status=DRAFT`；正式使用前请由业务/数据负责人替换并改为 `ACTIVE`。
 
@@ -195,12 +201,12 @@ dataagent/
 │  │  ├─ sql/                SQL 守卫、计划解析、规则分析
 │  │  └─ web/                REST 控制器 + DTO
 │  └─ src/main/resources/
-│     ├─ db/migration/       Flyway（V1 执行/知识、V2 资产+语义层、V3 DRAFT、V4 SRE、V5 Ontology+Verified、V6 Memory、V7 候选+反馈、V8 审计）
+│     ├─ db/migration/       Flyway（V1 执行/知识、V2 资产+语义层、V3 DRAFT、V4 SRE、V5 Ontology+Verified、V6 Memory、V7 候选+反馈、V8 审计、V9 API Key+租户）
 │     ├─ static/studio/      构建生成，不入库
 │     └─ application.yml
 ├─ studio/                   React + esbuild 源码（独立页 + DSH Client）
 ├─ dsh-plugin/               DSH bundle（client.js 构建生成；patch/icon/locale 入库）
-├─ mcp-server/              零依赖 MCP stdio 工具桥（33 个工具）
+├─ mcp-server/              零依赖 MCP stdio 工具桥（35 个工具）
 ├─ docs/                     架构、API、语义层、DSH 集成
 ├─ scripts/                  构建、运行、冒烟
 ├─ docker-compose.yml
@@ -253,7 +259,7 @@ java -jar backend/target/dataagent-cloud-0.1.0.jar
 ## 开发与测试
 
 ```powershell
-# 后端单元 + 集成测试（34 个）
+# 后端单元 + 集成测试（38 个）
 cd backend
 mvn test
 
@@ -272,7 +278,7 @@ backend/src/main/resources/static/studio/app.js
 dsh-plugin/client.js
 ```
 
-测试覆盖：SQL 守卫、静态规则、计划解析（PostgreSQL/MySQL/H2）、真实 H2 查询、执行计划、知识沉淀、SQL 资产缓存、语义上下文/设计、Ontology 关系、Verified Query 验证、长期记忆强化/提升知识、对话候选抽取/审核、冲突检测、纠错反馈闭环、查询结果缓存、审计、表级血缘、定期同步幂等、运维概览、SRE 基准执行、API Token。
+测试覆盖：SQL 守卫、静态规则、计划解析（PostgreSQL/MySQL/H2）、真实 H2 查询、执行计划、知识沉淀、SQL 资产缓存、语义上下文/设计、Ontology 关系、Verified Query 验证、长期记忆强化/提升知识、对话候选抽取/审核、冲突检测、纠错反馈闭环、查询结果缓存、审计、表级/字段级血缘、PII 脱敏、API Key 角色/ACL/租户、审计导出、OpenAPI 契约、定期同步幂等、运维概览、SRE 基准执行、API Token。
 
 定期同步可用临时端口验证，不需要等 30 分钟：
 

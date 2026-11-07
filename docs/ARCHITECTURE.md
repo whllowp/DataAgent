@@ -28,7 +28,7 @@ flowchart TB
     direction TB
     Panel["DataAgent SQL 面板<br/>Schema 树 / 编辑器 / 结果 / 历史 / 知识库"]
     DSH["DSH Agent + 大模型"]
-    MCP["MCP stdio bridge<br/>33 个 dataagent_* 工具"]
+    MCP["MCP stdio bridge<br/>35 个 dataagent_* 工具"]
     Panel -->|"HTTPS / REST"| Gateway
     DSH -->|"tool call"| MCP
     MCP -->|"HTTPS / REST"| Gateway
@@ -339,6 +339,32 @@ EXPLAIN <sql>
 
 详见 [GOVERNANCE.md](GOVERNANCE.md)。
 
+### 3.18 API Key、租户与 PII
+
+- `api_key`：只保存 keyPrefix + SHA-256；一次性明文返回
+- 角色 `READ / EXECUTE / ADMIN`；`api_key_datasource` 精确 ACL
+- `datasource.tenant_id`，`DatasourceService` 在 list/getRequired 双重校验
+- 静态 `DATAAGENT_API_TOKEN` 兼容为默认租户 ADMIN
+- `PiiService` 按列名识别 EMAIL/PHONE/ID_CARD/BANK_CARD/PERSON_NAME/ADDRESS 并在结果集脱敏
+- 字段级血缘从 `alias.column` 解析，`/api/lineage/fields`
+
+详见 [SECURITY.md](SECURITY.md)。
+
+### 3.19 韧性与 Redis
+
+- 数据源熔断：连续失败阈值、30s open、半开由成功 reset
+- 瞬时 SQLState `08*/40001/40P01/57P01` 自动重试一次
+- 慢查询 >= 5s 对该数据源限流 60s
+- Redis 可选：缓存 + `INCR/EXPIRE` 集群配额；不可用回退本地 Semaphore
+
+详见 [RESILIENCE.md](RESILIENCE.md)。
+
+### 3.20 审计导出与 CI
+
+- JSONL 文件 / SIEM webhook / 对象存储 PUT
+- 每日 04:30 按 retention-days 清理
+- `/v3/api-docs` 契约测试；GitHub Actions 跑后端测试 + Studio 构建 + 产物检查
+
 ## 4. 数据模型
 
 ```mermaid
@@ -447,6 +473,11 @@ V7 新增：
 V8 新增：
 
 - `audit_event`：不可变治理审计事件。
+
+V9 新增：
+
+- `api_key` / `api_key_datasource`：分权 Key 与数据源 ACL。
+- `datasource.tenant_id`：租户隔离。
 
 ## 5. 关键流程
 
@@ -616,6 +647,8 @@ dsh-plugin/
 | `dataagent_audit_overview` | 审计概览 |
 | `dataagent_audit_search` | 审计检索 |
 | `dataagent_lineage_impact` | 表级影响分析 |
+| `dataagent_lineage_fields` | 字段级血缘 |
+| `dataagent_pii_classify` | PII 分类 |
 
 所有工具最终受云端的只读网关约束；模型不能通过 MCP 绕过 `SqlGuard`。
 

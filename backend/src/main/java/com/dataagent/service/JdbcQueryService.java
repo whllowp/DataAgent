@@ -45,12 +45,15 @@ public class JdbcQueryService {
     private final QueryResultCache cache;
     private final QueryConcurrencyLimiter concurrency;
     private final AuditService audit;
+    private final PiiService pii;
+    private final DatasourceResilience resilience;
 
     public JdbcQueryService(DatasourceService datasources, SqlGuard guard, PlanService planService,
                             ResultValueConverter valueConverter, QueryExecutionRepository executions,
                             DataAgentProperties properties, SqlAssetService sqlAssets,
                             MeterRegistry meterRegistry, QueryResultCache cache,
-                            QueryConcurrencyLimiter concurrency, AuditService audit) {
+                            QueryConcurrencyLimiter concurrency, AuditService audit, PiiService pii,
+                            DatasourceResilience resilience) {
         this.datasources = datasources;
         this.guard = guard;
         this.planService = planService;
@@ -62,6 +65,8 @@ public class JdbcQueryService {
         this.cache = cache;
         this.concurrency = concurrency;
         this.audit = audit;
+        this.pii = pii;
+        this.resilience = resilience;
     }
 
     public SqlDtos.QueryResult execute(UUID datasourceId, String rawSql, Integer maxRows,
@@ -81,6 +86,14 @@ public class JdbcQueryService {
     public SqlDtos.QueryResult execute(UUID datasourceId, String rawSql, Integer maxRows,
                                        Integer timeoutSeconds, boolean includePlan, boolean autoPlan,
                                        boolean fresh, String user, String problem, String tags) {
+        return executeInternal(datasourceId, rawSql, maxRows, timeoutSeconds, includePlan, autoPlan,
+                fresh, user, problem, tags, false);
+    }
+
+    private SqlDtos.QueryResult executeInternal(UUID datasourceId, String rawSql, Integer maxRows,
+                                                Integer timeoutSeconds, boolean includePlan, boolean autoPlan,
+                                                boolean fresh, String user, String problem, String tags,
+                                                boolean retried) {
         SqlGuard.GuardedSql guarded;
         try {
             guarded = guard.guardForExecution(rawSql);
@@ -115,6 +128,14 @@ public class JdbcQueryService {
         long fetchMs = 0;
         SqlDtos.PlanView plan = null;
         String error = null;
+        boolean transientError = false;
+
+        try {
+            resilience.beforeQuery(datasourceId);
+        } catch (ApiException circuit) {
+            audit.record("SQL_BLOCKED", "ERROR", "SQL", null, datasourceId, circuit.getMessage());
+            throw circuit;
+        }
 
         try (QueryConcurrencyLimiter.Lease lease = concurrency.acquire(datasourceId)) {
             DataSource dataSource = datasources.dataSourceFor(datasourceId);
@@ -151,6 +172,7 @@ public class JdbcQueryService {
                         fetchMs = (System.nanoTime() - queryDone) / 1_000_000;
                     } catch (SQLException queryError) {
                         error = friendlyError(queryError, timeout);
+                        transientError = DatasourceResilience.isTransient(queryError);
                     }
 
                     if (error == null && supportsPlan(guarded.statementType())) {
@@ -174,6 +196,7 @@ public class JdbcQueryService {
                 }
             } catch (SQLException e) {
                 error = friendlyError(e, timeout);
+                transientError = DatasourceResilience.isTransient(e);
             }
         } catch (ApiException busy) {
             audit.record("SQL_BLOCKED", "ERROR", "SQL", null, datasourceId, busy.getMessage());
@@ -181,6 +204,20 @@ public class JdbcQueryService {
         }
 
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+        if (error != null) {
+            resilience.failure(datasourceId);
+            if (transientError && !retried) {
+                audit.record("SQL_RETRY", "ERROR", "SQL", null, datasourceId,
+                        "transient failure, retrying once: " + error);
+                return executeInternal(datasourceId, rawSql, maxRows, timeoutSeconds, includePlan,
+                        autoPlan, true, user, problem, tags, true);
+            }
+        } else {
+            resilience.success(datasourceId, elapsedMs);
+        }
+        PiiService.Masked masked = pii.mask(columns, rows);
+        rows = masked.rows();
+        List<String> piiColumns = masked.columns();
         String status = error == null ? "SUCCESS" : "ERROR";
         QueryExecution execution = new QueryExecution();
         execution.setId(queryId);
@@ -214,13 +251,13 @@ public class JdbcQueryService {
         }
         recordMetrics(dialect, status, elapsedMs);
         SqlDtos.QueryResult result = new SqlDtos.QueryResult(queryId, status, columns, rows, rows.size(),
-                truncated, elapsedMs, fetchMs, plan, error, executedAt, false);
+                truncated, elapsedMs, fetchMs, plan, error, executedAt, false, piiColumns);
         if (error == null) {
             cache.put(cacheKey, result);
         }
         audit.record("SQL_EXECUTE", status, "SQL", queryId, datasourceId,
                 "cache=MISS fingerprint=" + guarded.fingerprint() + " rows=" + rows.size()
-                        + " elapsedMs=" + elapsedMs);
+                        + " elapsedMs=" + elapsedMs + " pii=" + piiColumns.size());
         return result;
     }
 

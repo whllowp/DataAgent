@@ -1072,7 +1072,61 @@ GET /api/audit?actor=alice&action=SQL_EXECUTE&status=ERROR&limit=100&offset=0
 - `verifiedQueries`：引用该表的已验证查询
 - `semanticEntities`：`physicalTables` 包含该表的实体
 
-## 15. curl 速查
+### `GET /api/lineage/fields`
+
+返回字段级引用：`table`、`column`、`piiType`、资产/Verified Query 计数。
+
+### `GET /api/lineage/field-impact?table=SALES_ORDERS&column=AMOUNT`
+
+返回引用该字段的 SQL 资产和 Verified Query。
+
+### `POST /api/audit/export`
+
+```json
+{
+  "from": "2026-11-01T00:00:00Z",
+  "to": "2026-11-08T00:00:00Z",
+  "destination": "FILE"
+}
+```
+
+`destination`：`FILE` / `SIEM` / `OBJECT_STORE`。返回文件名、行数、字节数、SHA-256、状态。
+
+`GET /api/audit/export/download?from=&to=` 直接下载 JSONL。`POST /api/audit/purge` 按保留策略清理。
+
+## 15. 安全、PII 与韧性
+
+### `GET /api/auth/me`
+
+```json
+{"userId":"key:bi-reader","tenantId":"default","role":"READ","apiKeyId":"...","datasourceIds":["..."]}
+```
+
+### `GET/POST /api/api-keys`
+
+```json
+{
+  "name": "bi-reader",
+  "role": "READ",
+  "tenantId": "default",
+  "datasourceIds": ["<uuid>"],
+  "expiresAt": null
+}
+```
+
+返回一次性 `key`（`da_...`）；服务端只保存 hash。`DELETE /api/api-keys/{id}` 撤销。
+
+### `GET /api/pii/classify?column=customer_email`
+
+```json
+{"column":"customer_email","type":"EMAIL","masked":true,"maskExample":"e***@example.com"}
+```
+
+### `GET /api/ops/resilience`
+
+返回数据源失败计数、熔断截止时间、慢查询限流截止时间。
+
+## 16. curl 速查
 
 ```bash
 TOKEN=dataagent-dev-token
@@ -1127,4 +1181,14 @@ curl -s "$BASE/api/audit/overview" -H "X-API-Key: $TOKEN"
 curl -s "$BASE/api/ops/cache" -H "X-API-Key: $TOKEN"
 
 curl -s "$BASE/api/lineage/impact?table=SALES_ORDERS" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/lineage/fields" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/pii/classify?column=customer_email" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/ops/resilience" -H "X-API-Key: $TOKEN"
+
+curl -s -X POST "$BASE/api/audit/export" \
+  -H "X-API-Key: $TOKEN" -H "Content-Type: application/json" \
+  -d '{"destination":"FILE"}'
 ```

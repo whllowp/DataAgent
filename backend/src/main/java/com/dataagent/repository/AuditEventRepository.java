@@ -35,4 +35,8 @@ public interface AuditEventRepository extends JpaRepository<AuditEvent, UUID> {
     long countByStatusAndCreatedAtAfter(String status, Instant from);
 
     long countByActionAndCreatedAtAfter(String action, Instant from);
+
+    List<AuditEvent> findByCreatedAtBetweenOrderByCreatedAtAsc(Instant from, Instant to);
+
+    long deleteByCreatedAtBefore(Instant cutoff);
 }

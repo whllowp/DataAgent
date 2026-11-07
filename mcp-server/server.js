@@ -671,6 +671,32 @@ const tools = [
     annotations: { readOnlyHint: true },
     handler: (args) => api(`/api/lineage/impact?table=${encodeURIComponent(args.table)}`),
   },
+  {
+    name: 'dataagent_lineage_fields',
+    description: '查看字段级血缘：表、字段、PII 类型、关联 SQL 资产与 Verified Query 计数。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    handler: () => api('/api/lineage/fields'),
+  },
+  {
+    name: 'dataagent_pii_classify',
+    description: '判断字段是否属于 PII（邮箱/手机/身份证/银行卡/姓名/地址）并返回脱敏示例。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        column: { type: 'string' },
+        label: { type: 'string' },
+      },
+      required: ['column'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => {
+      const params = new URLSearchParams({ column: args.column });
+      if (args.label) params.set('label', args.label);
+      return api(`/api/pii/classify?${params.toString()}`);
+    },
+  },
 ];
 
 async function firstDatasourceId() {

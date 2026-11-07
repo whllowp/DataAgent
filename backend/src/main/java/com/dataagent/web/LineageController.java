@@ -28,4 +28,14 @@ public class LineageController {
     public LineageDtos.Impact impact(@RequestParam String table) {
         return lineage.impact(table);
     }
+
+    @GetMapping("/fields")
+    public List<LineageDtos.FieldSummary> fields() {
+        return lineage.fields();
+    }
+
+    @GetMapping("/field-impact")
+    public LineageDtos.FieldImpact fieldImpact(@RequestParam String table, @RequestParam String column) {
+        return lineage.fieldImpact(table, column);
+    }
 }

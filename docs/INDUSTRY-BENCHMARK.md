@@ -17,7 +17,8 @@
 | 反馈闭环 | 点赞/点踩、纠错、沉淀为 verified query | 新增 **feedback → memory + DRAFT verified query** |
 | 长期记忆 | 跨会话偏好/决策/事实、记忆强化、提升为知识 | 新增 **agent_memory + 候选审核 + 冲突检测** |
 | 向量召回 | 语义检索、相似问题/SQL 召回 | 新增 **本地 hashed embedding + cosine**，替换纯关键词 |
-| 生产治理 | 审计、配额、缓存、血缘、变更影响 | 新增 **audit_event、查询缓存、并发背压、表级血缘** |
+| 生产治理 | 审计、配额、缓存、血缘、变更影响 | 新增 **audit_event、查询缓存、并发背压、表/字段级血缘** |
+| 安全与合规 | RBAC、租户、PII、审计导出 | 新增 **scoped API Key、数据源 ACL、PII 脱敏、SIEM/对象存储导出** |
 | 治理 | 权限、审计、PII、只读、成本上限 | 只读网关 + Token；RBAC/行级权限待补 |
 
 ## 2. 本轮落地

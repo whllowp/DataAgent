@@ -68,13 +68,15 @@ dataagent:
     max-concurrent-per-datasource: 4
 ```
 
-## 4. 表级血缘
+## 4. 表级与字段级血缘
 
 从 SQL 资产、Verified Query 的 SQL 中提取 `FROM / JOIN / UPDATE / INTO / MERGE` 表引用，并识别 CTE，排除 CTE 别名。
 
 ```http
 GET /api/lineage/tables
 GET /api/lineage/impact?table=SALES_ORDERS
+GET /api/lineage/fields
+GET /api/lineage/field-impact?table=SALES_ORDERS&column=AMOUNT
 ```
 
 `impact` 返回：
@@ -83,13 +85,36 @@ GET /api/lineage/impact?table=SALES_ORDERS
 - 引用该表的 Verified Query
 - `physicalTables` 包含该表的语义实体
 
+`fields` 通过 `alias.column` 与 `FROM/JOIN ... alias` 解析字段级引用，并附带 `piiType`；`field-impact` 返回引用字段的资产和已验证查询。
+
 用于：
 
-- 表结构变更前评估影响面
+- 表/字段结构变更前评估影响面
 - 下线表前确认 Agent 资产
 - 语义实体与物理表的映射核对
+- PII 字段识别与脱敏策略核对
 
-## 5. 运维视图
+## 5. 审计导出与保留
+
+```http
+POST /api/audit/export
+{"from":"...","to":"...","destination":"FILE|SIEM|OBJECT_STORE"}
+
+GET /api/audit/export/download?from=&to=
+POST /api/audit/purge
+```
+
+- `FILE`：写入 `dataagent.audit.export-dir`，返回路径、行数、字节数、SHA-256
+- `SIEM`：POST `application/x-ndjson` 到 `dataagent.audit.siem-webhook`
+- `OBJECT_STORE`：PUT 到 `dataagent.audit.object-store-url/<file>`，可带 Bearer token
+- 每日 04:30 按 `retention-days`（默认 90）清理
+- 导出/清理需要 ADMIN
+
+## 6. 安全与 PII
+
+API Key、角色、租户、数据源 ACL、PII 分类/脱敏见 [SECURITY.md](SECURITY.md)。
+
+## 7. 运维视图
 
 `GET /api/ops/overview` 新增：
 
@@ -98,10 +123,9 @@ GET /api/lineage/impact?table=SALES_ORDERS
 
 Ops 弹窗展示“查询缓存”“审计 24h”卡片。
 
-## 6. 后续路线
+## 8. 后续路线
 
-- API Key 分权（只读/执行/管理）与租户隔离
-- 字段级血缘与 PII 分类
-- 审计导出到 SIEM / 对象存储
-- 分布式缓存（Redis）与集群级并发配额
-- 慢查询自动限流与数据源熔断
+- 字段级授权、行级安全、OIDC/SSO
+- 审计导出目标增加原生 S3 SigV4
+- 分布式缓存与配额的 Redis Cluster 生产化
+- 数据源熔断半开探测与自适应阈值

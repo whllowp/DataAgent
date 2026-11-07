@@ -54,7 +54,8 @@ public final class SqlDtos {
             PlanView plan,
             String message,
             Instant executedAt,
-            boolean cacheHit
+            boolean cacheHit,
+            List<String> piiMaskedColumns
     ) {
     }
 

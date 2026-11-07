@@ -31,12 +31,20 @@ public class ApiException extends RuntimeException {
         return new ApiException(HttpStatus.FORBIDDEN, "SQL_NOT_ALLOWED", message);
     }
 
+    public static ApiException accessDenied(String message) {
+        return new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", message);
+    }
+
     public static ApiException badGateway(String message, Throwable cause) {
         return new ApiException(HttpStatus.BAD_GATEWAY, "UPSTREAM_ERROR", message, cause);
     }
 
     public static ApiException tooManyRequests(String message) {
         return new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY_REQUESTS", message);
+    }
+
+    public static ApiException serviceUnavailable(String message) {
+        return new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE", message);
     }
 
     public HttpStatus getStatus() {

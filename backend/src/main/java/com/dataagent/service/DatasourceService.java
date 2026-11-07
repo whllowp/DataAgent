@@ -4,6 +4,8 @@ import com.dataagent.config.DataAgentProperties;
 import com.dataagent.domain.Datasource;
 import com.dataagent.domain.DbDialect;
 import com.dataagent.repository.DatasourceRepository;
+import com.dataagent.security.AuthContext;
+import com.dataagent.security.Principal;
 import com.dataagent.security.SecretCipher;
 import com.dataagent.web.ApiException;
 import com.dataagent.web.dto.DatasourceDtos;
@@ -55,7 +57,9 @@ public class DatasourceService {
 
     @Transactional(readOnly = true)
     public List<DatasourceDtos.DatasourceView> list() {
+        Principal principal = AuthContext.currentOrSystem();
         return repository.findAll().stream()
+                .filter(datasource -> visible(principal, datasource))
                 .sorted(Comparator.comparing(Datasource::getCreatedAt))
                 .map(this::toView)
                 .toList();
@@ -68,8 +72,20 @@ public class DatasourceService {
 
     @Transactional(readOnly = true)
     public Datasource getRequired(UUID id) {
-        return repository.findById(id)
+        Datasource datasource = repository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("数据源不存在: " + id));
+        Principal principal = AuthContext.currentOrSystem();
+        if (!visible(principal, datasource)) {
+            throw ApiException.accessDenied("当前 API Key 无权访问该数据源");
+        }
+        return datasource;
+    }
+
+    private boolean visible(Principal principal, Datasource datasource) {
+        if (!principal.tenantId().equals(datasource.getTenantId())) {
+            return false;
+        }
+        return principal.isAdmin() || principal.canAccess(datasource.getId());
     }
 
     @Transactional
@@ -80,6 +96,7 @@ public class DatasourceService {
                 : DbDialect.from(request.dialect());
 
         Datasource datasource = new Datasource();
+        datasource.setTenantId(AuthContext.currentOrSystem().tenantId());
         datasource.setName(request.name().trim());
         datasource.setDialect(dialect.name());
         datasource.setJdbcUrl(request.jdbcUrl().trim());

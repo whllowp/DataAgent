@@ -37,4 +37,21 @@ public final class AuditDtos {
 
     public record Page(List<View> items, long matched, int limit, int offset) {
     }
+
+    public record ExportRequest(
+            Instant from,
+            Instant to,
+            String destination
+    ) {
+    }
+
+    public record ExportResult(
+            String destination,
+            String file,
+            int count,
+            long bytes,
+            String checksum,
+            String status
+    ) {
+    }
 }

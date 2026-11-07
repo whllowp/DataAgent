@@ -10,18 +10,23 @@ import com.dataagent.service.HistoryService;
 import com.dataagent.service.JdbcQueryService;
 import com.dataagent.service.OptimizationService;
 import com.dataagent.service.OpsService;
+import com.dataagent.service.ApiKeyService;
+import com.dataagent.service.AuditExportService;
 import com.dataagent.service.BenchmarkService;
 import com.dataagent.service.AuditService;
 import com.dataagent.service.FeedbackService;
 import com.dataagent.service.LineageService;
 import com.dataagent.service.MemoryCandidateService;
 import com.dataagent.service.MemoryService;
+import com.dataagent.service.PiiService;
 import com.dataagent.service.QueryResultCache;
 import com.dataagent.service.SemanticService;
 import com.dataagent.service.SemanticSyncService;
 import com.dataagent.service.SqlAssetService;
 import com.dataagent.service.VerifiedQueryService;
 import com.dataagent.web.ApiException;
+import com.dataagent.web.dto.ApiKeyDtos;
+import com.dataagent.web.dto.AuditDtos;
 import com.dataagent.web.dto.BenchmarkDtos;
 import com.dataagent.web.dto.FeedbackDtos;
 import com.dataagent.web.dto.HistoryDtos;
@@ -47,7 +52,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
@@ -97,6 +105,12 @@ class DataAgentIntegrationTest {
     private QueryResultCache queryCache;
     @Autowired
     private LineageService lineage;
+    @Autowired
+    private ApiKeyService apiKeys;
+    @Autowired
+    private PiiService pii;
+    @Autowired
+    private AuditExportService auditExport;
     @Autowired
     private AuditService audit;
     @Autowired
@@ -330,6 +344,72 @@ class DataAgentIntegrationTest {
         assertFalse(lineage.impact("sales_orders").assets().isEmpty());
         assertFalse(lineage.impact("sales_orders").semanticEntities().isEmpty());
         assertFalse(lineage.tables().isEmpty());
+    }
+
+    @Test
+    void scopedApiKeysEnforceRolesAndDatasourceAcl() throws Exception {
+        ApiKeyDtos.Created reader = apiKeys.create(new ApiKeyDtos.CreateRequest(
+                "read-test", "READ", "default", null, java.util.List.of(demo.getId())));
+        mockMvc.perform(get("/api/datasources").header("X-API-Key", reader.key()))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/sql/execute")
+                        .header("X-API-Key", reader.key())
+                        .contentType("application/json")
+                        .content("{\"datasourceId\":\"" + demo.getId() + "\",\"sql\":\"SELECT 1 AS ok\"}"))
+                .andExpect(status().isForbidden());
+
+        ApiKeyDtos.Created executor = apiKeys.create(new ApiKeyDtos.CreateRequest(
+                "exec-test", "EXECUTE", "default", null, java.util.List.of(demo.getId())));
+        mockMvc.perform(post("/api/sql/execute")
+                        .header("X-API-Key", executor.key())
+                        .contentType("application/json")
+                        .content("{\"datasourceId\":\"" + demo.getId() + "\",\"sql\":\"SELECT 1 AS ok\"}"))
+                .andExpect(status().isOk());
+
+        ApiKeyDtos.Created otherTenant = apiKeys.create(new ApiKeyDtos.CreateRequest(
+                "other-test", "ADMIN", "other", null, java.util.List.of()));
+        mockMvc.perform(get("/api/datasources").header("X-API-Key", otherTenant.key()))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"items\":[]}"));
+        mockMvc.perform(get("/api/datasources/" + demo.getId()).header("X-API-Key", otherTenant.key()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void masksPiiAndExtractsFieldLineage() {
+        assertEquals("EMAIL", pii.classify("customer_email", null));
+        assertEquals("a***@example.com", pii.mask("EMAIL", "alice@example.com"));
+
+        SqlDtos.QueryResult result = queries.execute(demo.getId(),
+                "SELECT 'alice@example.com' AS email, '13812345678' AS mobile", 10, null, false,
+                "tester", "pii probe", "test");
+        assertTrue(result.piiMaskedColumns().stream().anyMatch(column -> "email".equalsIgnoreCase(column)));
+        assertEquals("a***@example.com", result.rows().get(0).get(0));
+
+        var fields = lineage.extractFields(
+                "SELECT o.amount, c.city FROM sales_orders o JOIN customers c ON c.id = o.customer_id");
+        assertTrue(fields.contains("SALES_ORDERS.AMOUNT"));
+        assertTrue(fields.contains("CUSTOMERS.CITY"));
+        assertFalse(lineage.fields().isEmpty());
+    }
+
+    @Test
+    void exportsAuditJsonlAndPurgesByRetention() {
+        audit.record("EXPORT_TEST", "SUCCESS", "TEST", null, demo.getId(), "export probe");
+        String jsonl = auditExport.jsonl(java.time.Instant.now().minusSeconds(3600), java.time.Instant.now());
+        assertTrue(jsonl.contains("EXPORT_TEST"));
+        assertNotNull(auditExport.export(new AuditDtos.ExportRequest(
+                java.time.Instant.now().minusSeconds(3600), java.time.Instant.now(), "FILE")));
+    }
+
+    @Test
+    void openApiContractExposesCorePaths() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/datasources']").exists())
+                .andExpect(jsonPath("$.paths['/api/sql/execute']").exists())
+                .andExpect(jsonPath("$.paths['/api/audit']").exists())
+                .andExpect(jsonPath("$.paths['/api/lineage/impact']").exists());
     }
 
     @Test

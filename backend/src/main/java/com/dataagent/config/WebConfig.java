@@ -1,6 +1,7 @@
 package com.dataagent.config;
 
 import com.dataagent.security.ApiTokenFilter;
+import com.dataagent.service.ApiKeyService;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -39,9 +40,9 @@ public class WebConfig {
 
     @Bean
     public FilterRegistrationBean<ApiTokenFilter> apiTokenFilterRegistration(
-            DataAgentProperties properties) {
+            DataAgentProperties properties, ApiKeyService apiKeys) {
         FilterRegistrationBean<ApiTokenFilter> registration =
-                new FilterRegistrationBean<>(new ApiTokenFilter(properties));
+                new FilterRegistrationBean<>(new ApiTokenFilter(properties, apiKeys));
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
         registration.addUrlPatterns("/api/*");
         registration.setName("apiTokenFilter");

@@ -28,16 +28,26 @@ public class LineageService {
             "(?i)(?:\\bWITH\\b|,)\\s*([a-z_][\\w$]*)\\s+AS\\s*\\(");
     private static final Pattern TABLE = Pattern.compile(
             "(?i)\\b(?:FROM|JOIN|UPDATE|INTO|DELETE\\s+FROM|MERGE\\s+INTO)\\s+([a-z_][\\w$]*(?:\\.[a-z_][\\w$]*)?)");
+    private static final Pattern TABLE_ALIAS = Pattern.compile(
+            "(?i)\\b(?:FROM|JOIN)\\s+([a-z_][\\w$]*(?:\\.[a-z_][\\w$]*)?)(?:\\s+(?:AS\\s+)?([a-z_][\\w$]*))?");
+    private static final Pattern QUALIFIED_FIELD = Pattern.compile(
+            "(?i)\\b([a-z_][\\w$]*)\\.([a-z_][\\w$]*)\\b");
+    private static final Set<String> ALIAS_STOP = Set.of(
+            "WHERE", "ON", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "FULL", "CROSS",
+            "GROUP", "ORDER", "LIMIT", "OFFSET", "UNION", "AS", "USING", "SET", "VALUES",
+            "SELECT", "WITH", "HAVING", "WINDOW", "FETCH");
 
     private final SqlAssetRepository assets;
     private final VerifiedQueryRepository verifiedQueries;
     private final SemanticEntityRepository entities;
+    private final PiiService pii;
 
     public LineageService(SqlAssetRepository assets, VerifiedQueryRepository verifiedQueries,
-                          SemanticEntityRepository entities) {
+                          SemanticEntityRepository entities, PiiService pii) {
         this.assets = assets;
         this.verifiedQueries = verifiedQueries;
         this.entities = entities;
+        this.pii = pii;
     }
 
     @Transactional(readOnly = true)
@@ -114,6 +124,90 @@ public class LineageService {
         String upper = table.toUpperCase(Locale.ROOT);
         int dot = upper.lastIndexOf('.');
         return dot >= 0 ? upper.substring(dot + 1) : upper;
+    }
+
+    public Set<String> extractFields(String sql) {
+        Set<String> result = new LinkedHashSet<>();
+        if (sql == null || sql.isBlank()) {
+            return result;
+        }
+        String cleaned = strip(sql);
+        Map<String, String> aliases = aliasMap(cleaned);
+        Matcher matcher = QUALIFIED_FIELD.matcher(cleaned);
+        while (matcher.find()) {
+            String table = aliases.get(matcher.group(1).toLowerCase(Locale.ROOT));
+            if (table != null) {
+                result.add(table + "." + matcher.group(2).toUpperCase(Locale.ROOT));
+            }
+        }
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public List<LineageDtos.FieldSummary> fields() {
+        Map<String, int[]> counts = new LinkedHashMap<>();
+        for (SqlAsset asset : assets.findAll()) {
+            for (String field : extractFields(asset.getSqlText())) {
+                counts.computeIfAbsent(field, ignored -> new int[2])[0]++;
+            }
+        }
+        for (VerifiedQuery query : verifiedQueries.findAll()) {
+            for (String field : extractFields(query.getSqlText())) {
+                counts.computeIfAbsent(field, ignored -> new int[2])[1]++;
+            }
+        }
+        return counts.entrySet().stream()
+                .map(entry -> {
+                    String[] parts = entry.getKey().split("\\.", 2);
+                    return new LineageDtos.FieldSummary(parts[0], parts[1],
+                            pii.classify(parts[1], parts[1]), entry.getValue()[0], entry.getValue()[1]);
+                })
+                .sorted(Comparator.comparing(LineageDtos.FieldSummary::table)
+                        .thenComparing(LineageDtos.FieldSummary::column))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public LineageDtos.FieldImpact fieldImpact(String table, String column) {
+        String normalizedTable = canonical(table);
+        String normalizedColumn = column == null ? "" : column.trim().toUpperCase(Locale.ROOT);
+        String field = normalizedTable + "." + normalizedColumn;
+        List<LineageDtos.AssetRef> assetRefs = assets.findAll().stream()
+                .filter(asset -> extractFields(asset.getSqlText()).contains(field))
+                .map(asset -> new LineageDtos.AssetRef(asset.getId(), asset.getBusinessProblem(),
+                        preview(asset.getSqlText()), asset.getDatasourceId(),
+                        asset.getExecutionCount(), asset.getLastSeen()))
+                .toList();
+        List<LineageDtos.VerifiedRef> verifiedRefs = verifiedQueries.findAll().stream()
+                .filter(query -> extractFields(query.getSqlText()).contains(field))
+                .map(query -> new LineageDtos.VerifiedRef(query.getId(), query.getQuestion(),
+                        query.getStatus()))
+                .toList();
+        return new LineageDtos.FieldImpact(normalizedTable, normalizedColumn,
+                pii.classify(normalizedColumn, normalizedColumn), assetRefs, verifiedRefs);
+    }
+
+    private Map<String, String> aliasMap(String sql) {
+        Map<String, String> aliases = new LinkedHashMap<>();
+        Set<String> cteNames = new LinkedHashSet<>();
+        Matcher cteMatcher = CTE.matcher(sql);
+        while (cteMatcher.find()) {
+            cteNames.add(cteMatcher.group(1).toUpperCase(Locale.ROOT));
+        }
+        Matcher matcher = TABLE_ALIAS.matcher(sql);
+        while (matcher.find()) {
+            String table = canonical(matcher.group(1));
+            if (cteNames.contains(table)) {
+                continue;
+            }
+            aliases.put(table.toLowerCase(Locale.ROOT), table);
+            String alias = matcher.group(2);
+            if (alias != null && !alias.isBlank()
+                    && !ALIAS_STOP.contains(alias.toUpperCase(Locale.ROOT))) {
+                aliases.put(alias.toLowerCase(Locale.ROOT), table);
+            }
+        }
+        return aliases;
     }
 
     private boolean references(String sql, String table) {

@@ -13,6 +13,10 @@ public class DataAgentProperties {
     private final Query query = new Query();
     private final Semantic semantic = new Semantic();
     private final Benchmark benchmark = new Benchmark();
+    private final Pii pii = new Pii();
+    private final Redis redis = new Redis();
+    private final Resilience resilience = new Resilience();
+    private final Audit audit = new Audit();
 
     public Security getSecurity() {
         return security;
@@ -36,6 +40,160 @@ public class DataAgentProperties {
 
     public Benchmark getBenchmark() {
         return benchmark;
+    }
+
+    public Pii getPii() {
+        return pii;
+    }
+
+    public Redis getRedis() {
+        return redis;
+    }
+
+    public Resilience getResilience() {
+        return resilience;
+    }
+
+    public Audit getAudit() {
+        return audit;
+    }
+
+    public static class Audit {
+        private int retentionDays = 90;
+        private String exportDir = "./data/audit-exports";
+        private String siemWebhook;
+        private String objectStoreUrl;
+        private String objectStoreToken;
+
+        public int getRetentionDays() {
+            return retentionDays;
+        }
+
+        public void setRetentionDays(int retentionDays) {
+            this.retentionDays = retentionDays;
+        }
+
+        public String getExportDir() {
+            return exportDir;
+        }
+
+        public void setExportDir(String exportDir) {
+            this.exportDir = exportDir;
+        }
+
+        public String getSiemWebhook() {
+            return siemWebhook;
+        }
+
+        public void setSiemWebhook(String siemWebhook) {
+            this.siemWebhook = siemWebhook;
+        }
+
+        public String getObjectStoreUrl() {
+            return objectStoreUrl;
+        }
+
+        public void setObjectStoreUrl(String objectStoreUrl) {
+            this.objectStoreUrl = objectStoreUrl;
+        }
+
+        public String getObjectStoreToken() {
+            return objectStoreToken;
+        }
+
+        public void setObjectStoreToken(String objectStoreToken) {
+            this.objectStoreToken = objectStoreToken;
+        }
+    }
+
+    public static class Resilience {
+        private int failureThreshold = 5;
+        private long openMs = 30_000;
+        private long slowThresholdMs = 5_000;
+        private long slowCooldownMs = 60_000;
+
+        public int getFailureThreshold() {
+            return failureThreshold;
+        }
+
+        public void setFailureThreshold(int failureThreshold) {
+            this.failureThreshold = failureThreshold;
+        }
+
+        public long getOpenMs() {
+            return openMs;
+        }
+
+        public void setOpenMs(long openMs) {
+            this.openMs = openMs;
+        }
+
+        public long getSlowThresholdMs() {
+            return slowThresholdMs;
+        }
+
+        public void setSlowThresholdMs(long slowThresholdMs) {
+            this.slowThresholdMs = slowThresholdMs;
+        }
+
+        public long getSlowCooldownMs() {
+            return slowCooldownMs;
+        }
+
+        public void setSlowCooldownMs(long slowCooldownMs) {
+            this.slowCooldownMs = slowCooldownMs;
+        }
+    }
+
+    public static class Redis {
+        private boolean enabled = false;
+        private String keyPrefix = "dataagent";
+        private long quotaTtlSeconds = 120;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getKeyPrefix() {
+            return keyPrefix;
+        }
+
+        public void setKeyPrefix(String keyPrefix) {
+            this.keyPrefix = keyPrefix;
+        }
+
+        public long getQuotaTtlSeconds() {
+            return quotaTtlSeconds;
+        }
+
+        public void setQuotaTtlSeconds(long quotaTtlSeconds) {
+            this.quotaTtlSeconds = quotaTtlSeconds;
+        }
+    }
+
+    public static class Pii {
+        private boolean enabled = true;
+        private boolean maskEnabled = true;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public boolean isMaskEnabled() {
+            return maskEnabled;
+        }
+
+        public void setMaskEnabled(boolean maskEnabled) {
+            this.maskEnabled = maskEnabled;
+        }
     }
 
     public static class Security {

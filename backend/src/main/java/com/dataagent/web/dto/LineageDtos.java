@@ -49,4 +49,22 @@ public final class LineageDtos {
             List<EntityRef> semanticEntities
     ) {
     }
+
+    public record FieldSummary(
+            String table,
+            String column,
+            String piiType,
+            int assetCount,
+            int verifiedQueryCount
+    ) {
+    }
+
+    public record FieldImpact(
+            String table,
+            String column,
+            String piiType,
+            List<AssetRef> assets,
+            List<VerifiedRef> verifiedQueries
+    ) {
+    }
 }

@@ -16,6 +16,9 @@ public class Datasource {
     @Id
     private UUID id;
 
+    @Column(name = "tenant_id", nullable = false, length = 80)
+    private String tenantId = "default";
+
     @Column(nullable = false, length = 120)
     private String name;
 
@@ -62,6 +65,14 @@ public class Datasource {
 
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId;
     }
 
     public String getName() {

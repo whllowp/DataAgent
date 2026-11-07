@@ -32,6 +32,12 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
   jackson:
     default-property-inclusion: non_null
     serialization:
@@ -45,6 +51,9 @@ management:
   endpoint:
     health:
       show-details: always
+  health:
+    redis:
+      enabled: ${DATAAGENT_REDIS_ENABLED:false}
 
 springdoc:
   swagger-ui:
@@ -83,6 +92,24 @@ dataagent:
     sync-enabled: ${DATAAGENT_BENCHMARK_SYNC_ENABLED:true}
     sync-interval-ms: ${DATAAGENT_BENCHMARK_SYNC_INTERVAL_MS:3600000}
     sync-initial-delay-ms: ${DATAAGENT_BENCHMARK_SYNC_INITIAL_DELAY_MS:300000}
+  pii:
+    enabled: ${DATAAGENT_PII_ENABLED:true}
+    mask-enabled: ${DATAAGENT_PII_MASK_ENABLED:true}
+  redis:
+    enabled: ${DATAAGENT_REDIS_ENABLED:false}
+    key-prefix: ${DATAAGENT_REDIS_KEY_PREFIX:dataagent}
+    quota-ttl-seconds: ${DATAAGENT_REDIS_QUOTA_TTL_SECONDS:120}
+  resilience:
+    failure-threshold: ${DATAAGENT_CIRCUIT_FAILURE_THRESHOLD:5}
+    open-ms: ${DATAAGENT_CIRCUIT_OPEN_MS:30000}
+    slow-threshold-ms: ${DATAAGENT_SLOW_THRESHOLD_MS:5000}
+    slow-cooldown-ms: ${DATAAGENT_SLOW_COOLDOWN_MS:60000}
+  audit:
+    retention-days: ${DATAAGENT_AUDIT_RETENTION_DAYS:90}
+    export-dir: ${DATAAGENT_AUDIT_EXPORT_DIR:./data/audit-exports}
+    siem-webhook: ${DATAAGENT_AUDIT_SIEM_WEBHOOK:}
+    object-store-url: ${DATAAGENT_AUDIT_OBJECT_STORE_URL:}
+    object-store-token: ${DATAAGENT_AUDIT_OBJECT_STORE_TOKEN:}
 
 logging:
   level:
