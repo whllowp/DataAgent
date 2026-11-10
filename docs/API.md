@@ -1126,7 +1126,41 @@ GET /api/audit?actor=alice&action=SQL_EXECUTE&status=ERROR&limit=100&offset=0
 
 返回数据源失败计数、熔断截止时间、慢查询限流截止时间。
 
-## 16. curl 速查
+## 16. ETL / DolphinScheduler
+
+### `POST /api/etl/sync/dolphinscheduler`
+
+导入 DolphinScheduler process definitions、task relations、schedule 和 workflow dependencies。ADMIN only。
+
+### `GET /api/etl/overview`
+
+workflow/task 数、已排程、依赖环、孤立任务。
+
+### `GET /api/etl/workflows`
+
+返回调度 cron、任务数、上下游 workflow 数、下次运行时间。
+
+### `GET /api/etl/workflows/{id}/graph`
+
+任务节点、依赖边、拓扑顺序、环、孤立任务、源/目标表。
+
+### `GET /api/etl/workflows/{id}/schedule`
+
+cron、timezone、nextRun、关键路径、拓扑顺序。
+
+### `GET /api/etl/workflows/{id}/analysis`
+
+端到端分析：关键路径、源/目标表、孤立任务、上下游 workflow 链。
+
+### `GET /api/etl/lineage?table=ODS_ORDERS&direction=downstream&depth=10`
+
+追踪 ETL 任务链中的表级上下游：
+
+- 节点：表 + depth
+- 边：fromTable、toTable、task、workflow、schedule
+- 相关 workflow 列表
+
+## 17. curl 速查
 
 ```bash
 TOKEN=dataagent-dev-token
@@ -1191,4 +1225,10 @@ curl -s "$BASE/api/ops/resilience" -H "X-API-Key: $TOKEN"
 curl -s -X POST "$BASE/api/audit/export" \
   -H "X-API-Key: $TOKEN" -H "Content-Type: application/json" \
   -d '{"destination":"FILE"}'
+
+curl -s "$BASE/api/etl/overview" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/etl/workflows" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/etl/lineage?table=ODS_ORDERS&direction=downstream" -H "X-API-Key: $TOKEN"
 ```

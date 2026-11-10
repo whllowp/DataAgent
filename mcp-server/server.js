@@ -697,6 +697,69 @@ const tools = [
       return api(`/api/pii/classify?${params.toString()}`);
     },
   },
+  {
+    name: 'dataagent_etl_overview',
+    description: '查看 ETL workflow/task 规模、调度覆盖率、依赖环与孤立任务。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    handler: () => api('/api/etl/overview'),
+  },
+  {
+    name: 'dataagent_etl_workflows',
+    description: '列出 ETL workflow：调度 cron、任务数、上下游 workflow 依赖。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    handler: () => api('/api/etl/workflows'),
+  },
+  {
+    name: 'dataagent_etl_analysis',
+    description: '查看单个 ETL workflow 的端到端分析：拓扑顺序、关键路径、源/目标表、上下游 workflow。',
+    inputSchema: {
+      type: 'object',
+      properties: { workflowId: { type: 'string' } },
+      required: ['workflowId'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => api(`/api/etl/workflows/${encodeURIComponent(args.workflowId)}/analysis`),
+  },
+  {
+    name: 'dataagent_etl_lineage',
+    description: '追踪物理表在 ETL 任务中的上下游血缘，包括任务、workflow 与调度信息。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        table: { type: 'string' },
+        direction: { type: 'string', enum: ['upstream', 'downstream'] },
+        depth: { type: 'integer', minimum: 1, maximum: 30 },
+      },
+      required: ['table'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => {
+      const params = new URLSearchParams({ table: args.table });
+      if (args.direction) params.set('direction', args.direction);
+      if (args.depth) params.set('depth', String(args.depth));
+      return api(`/api/etl/lineage?${params.toString()}`);
+    },
+  },
+  {
+    name: 'dataagent_etl_sync_dolphinscheduler',
+    description: '导入 DolphinScheduler process definition/task relation/schedule 数据，建立 ETL 任务和 workflow 依赖拓扑。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tenantId: { type: 'string' },
+        projectCode: { type: 'integer' },
+        projectName: { type: 'string' },
+        processDefinitions: { type: 'array', items: { type: 'object' } },
+      },
+      required: ['processDefinitions'],
+      additionalProperties: false,
+    },
+    handler: (args) => api('/api/etl/sync/dolphinscheduler', { method: 'POST', body: args }),
+  },
 ];
 
 async function firstDatasourceId() {

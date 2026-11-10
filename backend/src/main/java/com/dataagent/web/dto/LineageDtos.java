@@ -13,7 +13,8 @@ public final class LineageDtos {
             String table,
             int assetCount,
             int verifiedQueryCount,
-            int semanticEntityCount
+            int semanticEntityCount,
+            int etlTaskCount
     ) {
     }
 
@@ -42,11 +43,24 @@ public final class LineageDtos {
     ) {
     }
 
+    public record EtlRef(
+            UUID taskId,
+            String taskName,
+            String taskType,
+            UUID workflowId,
+            String workflowName,
+            String scheduleCron,
+            String sourceTables,
+            String targetTable
+    ) {
+    }
+
     public record Impact(
             String table,
             List<AssetRef> assets,
             List<VerifiedRef> verifiedQueries,
-            List<EntityRef> semanticEntities
+            List<EntityRef> semanticEntities,
+            List<EtlRef> etlTasks
     ) {
     }
 

@@ -234,6 +234,16 @@ export function SqlStudio({ embedded = false }) {
   const [opsLoading, setOpsLoading] = React.useState(false);
   const [opsError, setOpsError] = React.useState('');
   const [opsRunningBenchmarks, setOpsRunningBenchmarks] = React.useState(false);
+  const [etlOpen, setEtlOpen] = React.useState(false);
+  const [etlLoading, setEtlLoading] = React.useState(false);
+  const [etlError, setEtlError] = React.useState('');
+  const [etlOverview, setEtlOverview] = React.useState(null);
+  const [etlWorkflows, setEtlWorkflows] = React.useState([]);
+  const [etlSelected, setEtlSelected] = React.useState(null);
+  const [etlGraph, setEtlGraph] = React.useState(null);
+  const [etlAnalysis, setEtlAnalysis] = React.useState(null);
+  const [etlLineage, setEtlLineage] = React.useState(null);
+  const [etlTable, setEtlTable] = React.useState('ODS_ORDERS');
   const api = React.useMemo(() => createApi({ baseUrl: apiBase, token }), [apiBase, token]);
 
   const [datasources, setDatasources] = React.useState([]);
@@ -468,6 +478,62 @@ export function SqlStudio({ embedded = false }) {
       setOpsRunningBenchmarks(false);
     }
   }
+
+  async function loadEtl() {
+    setEtlLoading(true);
+    setEtlError('');
+    try {
+      const [overview, workflows] = await Promise.all([api.etlOverview(), api.etlWorkflows()]);
+      setEtlOverview(overview);
+      setEtlWorkflows(workflows || []);
+      const selected = etlSelected && workflows.some((item) => item.id === etlSelected)
+        ? etlSelected : workflows?.[0]?.id;
+      if (selected) {
+        setEtlSelected(selected);
+        const [graph, analysis] = await Promise.all([api.etlGraph(selected), api.etlAnalysis(selected)]);
+        setEtlGraph(graph);
+        setEtlAnalysis(analysis);
+      }
+    } catch (error) {
+      setEtlError(error.message);
+    } finally {
+      setEtlLoading(false);
+    }
+  }
+
+  async function loadEtlWorkflow(id) {
+    setEtlSelected(id);
+    setEtlLoading(true);
+    setEtlError('');
+    try {
+      const [graph, analysis] = await Promise.all([api.etlGraph(id), api.etlAnalysis(id)]);
+      setEtlGraph(graph);
+      setEtlAnalysis(analysis);
+    } catch (error) {
+      setEtlError(error.message);
+    } finally {
+      setEtlLoading(false);
+    }
+  }
+
+  async function loadEtlLineage() {
+    if (!etlTable.trim()) return;
+    setEtlLoading(true);
+    setEtlError('');
+    try {
+      setEtlLineage(await api.etlLineage(etlTable.trim(), 'downstream', 10));
+    } catch (error) {
+      setEtlError(error.message);
+    } finally {
+      setEtlLoading(false);
+    }
+  }
+
+  React.useEffect(() => {
+    if (!etlOpen) return undefined;
+    loadEtl();
+    return undefined;
+  }, [etlOpen, api]);
 
   React.useEffect(() => {
     if (!opsOpen) return undefined;
@@ -971,6 +1037,9 @@ export function SqlStudio({ embedded = false }) {
           >
             <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={15} />
           </button>
+          <button className="da-icon-btn" onClick={() => setEtlOpen(true)} title="数据血缘 / ETL / DolphinScheduler">
+            <Icon name="plan" size={15} />
+          </button>
           <button className="da-icon-btn" onClick={() => setOpsOpen(true)} title="运维可观测 / SRE 基准">
             <Icon name="chart" size={15} />
           </button>
@@ -1355,6 +1424,25 @@ export function SqlStudio({ embedded = false }) {
           sql={activeTab?.sql || ''}
           onClose={() => setSaveAssetOpen(false)}
           onSubmit={saveCurrentSqlAsset}
+        />
+      ) : null}
+
+      {etlOpen ? (
+        <EtlModal
+          overview={etlOverview}
+          workflows={etlWorkflows}
+          selected={etlSelected}
+          graph={etlGraph}
+          analysis={etlAnalysis}
+          lineage={etlLineage}
+          table={etlTable}
+          setTable={setEtlTable}
+          loading={etlLoading}
+          error={etlError}
+          onSelect={loadEtlWorkflow}
+          onLineage={loadEtlLineage}
+          onRefresh={loadEtl}
+          onClose={() => setEtlOpen(false)}
         />
       ) : null}
 
@@ -2229,6 +2317,119 @@ function SaveAssetModal({ sql, onClose, onSubmit }) {
         <label className="da-label">SQL</label>
         <textarea className="da-textarea" value={form.sql} onChange={(event) => update('sql', event.target.value)} style={{ minHeight: 140 }} />
       </div>
+    </Modal>
+  );
+}
+
+function EtlModal({ overview, workflows, selected, graph, analysis, lineage, table, setTable,
+                   loading, error, onSelect, onLineage, onRefresh, onClose }) {
+  const selectedWorkflow = workflows.find((item) => item.id === selected);
+  return (
+    <Modal
+      title="数据血缘 / ETL / DolphinScheduler"
+      onClose={onClose}
+      wide
+      footer={(
+        <button className="da-btn ghost" onClick={onRefresh} disabled={loading}>
+          <Icon name={loading ? 'refresh' : 'plan'} size={11} className={loading ? 'da-spin' : ''} /> 刷新
+        </button>
+      )}
+    >
+      {error ? <div className="da-error-box">{error}</div> : null}
+      <div className="da-ops-hero">
+        <div>
+          <span className="da-status ok">ETL</span>
+          <div className="da-ops-title">端到端任务血缘</div>
+          <div className="da-muted">
+            {overview ? `${overview.workflows} workflows · ${overview.tasks} tasks · ${overview.dependencyCycles} cycles · ${overview.orphanTasks} orphans` : '读取中…'}
+          </div>
+        </div>
+        <div className="da-ops-hero-right">
+          <strong>{overview?.scheduled ?? 0}</strong>
+          <span>已排程</span>
+        </div>
+      </div>
+
+      <div className="da-kb-section-label">DolphinScheduler workflows</div>
+      <div className="da-ops-table">
+        {workflows.map((workflow) => (
+          <button className={`da-ops-row ${workflow.id === selected ? 'active' : ''}`} key={workflow.id}
+                  onClick={() => onSelect(workflow.id)} style={{ cursor: 'pointer', textAlign: 'left' }}>
+            <span>{workflow.name}<small>{workflow.source} · {workflow.externalId || '—'}</small></span>
+            <span>{workflow.scheduleCron || '未排程'}</span>
+            <span>{workflow.taskCount} tasks</span>
+            <span>↑{workflow.upstreamWorkflowCount} ↓{workflow.downstreamWorkflowCount}</span>
+            <span>{workflow.nextRun ? formatTime(workflow.nextRun) : '—'}</span>
+          </button>
+        ))}
+        {!workflows.length ? <div className="da-hint">暂无 ETL workflow。通过 /api/etl/sync/dolphinscheduler 导入。</div> : null}
+      </div>
+
+      {graph ? (
+        <>
+          <div className="da-kb-section-label">任务拓扑 · {selectedWorkflow?.name}</div>
+          <div className="da-ops-grid">
+            <div className="da-ops-card"><span>任务数</span><strong>{graph.nodes.length}</strong><small>{graph.edges.length} 条依赖</small></div>
+            <div className="da-ops-card"><span>调度</span><strong style={{ fontSize: 13 }}>{graph.scheduleCron || '—'}</strong><small>{graph.timezone || '默认时区'}</small></div>
+            <div className="da-ops-card"><span>下次运行</span><strong style={{ fontSize: 13 }}>{graph.nextRun ? formatTime(graph.nextRun) : '—'}</strong><small>{graph.topologicalOrder.length} 个拓扑节点</small></div>
+            <div className="da-ops-card"><span>源/目标表</span><strong>{graph.sourceTables.length}/{graph.targetTables.length}</strong><small>{graph.cycles.length ? `环: ${graph.cycles.join(', ')}` : '无环'}</small></div>
+          </div>
+          <div className="da-ops-table">
+            {graph.topologicalOrder.map((id, index) => {
+              const node = graph.nodes.find((item) => item.id === id);
+              const incoming = graph.edges.filter((edge) => edge.to === id);
+              const outgoing = graph.edges.filter((edge) => edge.from === id);
+              return (
+                <div className="da-ops-row" key={id}>
+                  <span>{index + 1}. {node?.label || id}<small>{node?.type || 'TASK'}</small></span>
+                  <span>上游 {incoming.length}</span>
+                  <span>下游 {outgoing.length}</span>
+                  <span className="da-mono">{outgoing.map((edge) => edge.conditionType).join(', ') || '—'}</span>
+                </div>
+              );
+            })}
+          </div>
+          {analysis ? (
+            <>
+              <div className="da-kb-section-label">端到端分析</div>
+              <div className="da-ops-sync">
+                <div>
+                  <div>关键路径 {analysis.schedule?.criticalPathLength ?? 0} 个任务</div>
+                  <div className="da-muted">
+                    上游 workflow {analysis.upstreamWorkflows?.length ?? 0} · 下游 {analysis.downstreamWorkflows?.length ?? 0}
+                    {analysis.orphanTasks?.length ? ` · 孤立任务 ${analysis.orphanTasks.length}` : ''}
+                  </div>
+                </div>
+                <div className="da-ops-sync-links">
+                  {(analysis.sourceTables || []).slice(0, 3).map((item) => <span key={item}>{item}</span>)}
+                  <span>→</span>
+                  {(analysis.targetTables || []).slice(0, 3).map((item) => <span key={item}>{item}</span>)}
+                </div>
+              </div>
+            </>
+          ) : null}
+        </>
+      ) : null}
+
+      <div className="da-kb-section-label">表级血缘查询</div>
+      <div className="da-search" style={{ marginBottom: 8 }}>
+        <input className="da-input" value={table} onChange={(event) => setTable(event.target.value)}
+               placeholder="ODS_ORDERS" onKeyDown={(event) => { if (event.key === 'Enter') onLineage(); }} />
+        <button className="da-btn small accent" onClick={onLineage} disabled={loading}>下游追踪</button>
+      </div>
+      {lineage ? (
+        <div className="da-ops-table">
+          {lineage.edges.map((edge, index) => (
+            <div className="da-ops-row" key={`${edge.taskId}-${index}`}>
+              <span>{edge.fromTable} → {edge.toTable}</span>
+              <span>{edge.taskName}</span>
+              <span>{edge.workflowName}</span>
+              <span>{edge.scheduleCron || '—'}</span>
+            </div>
+          ))}
+          {!lineage.edges.length ? <div className="da-hint">没有找到下游 ETL 血缘。</div> : null}
+        </div>
+      ) : <div className="da-hint">输入物理表，查看 ETL 任务链与下游表。</div>}
     </Modal>
   );
 }

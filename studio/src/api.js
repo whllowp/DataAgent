@@ -126,6 +126,12 @@ export function createApi({ baseUrl, token }) {
     approveMemoryCandidate: (id, body = {}) => request(`/api/memory/candidates/${id}/approve`, { method: 'POST', body }),
     rejectMemoryCandidate: (id, body = {}) => request(`/api/memory/candidates/${id}/reject`, { method: 'POST', body }),
     submitFeedback: (body) => request('/api/feedback', { method: 'POST', body }),
+    etlOverview: () => request('/api/etl/overview'),
+    etlWorkflows: () => request('/api/etl/workflows'),
+    etlGraph: (id) => request(`/api/etl/workflows/${id}/graph`),
+    etlAnalysis: (id) => request(`/api/etl/workflows/${id}/analysis`),
+    etlLineage: (table, direction = 'downstream', depth = 10) =>
+      request(`/api/etl/lineage${encodeQuery({ table, direction, depth })}`),
     opsOverview: () => request('/api/ops/overview'),
     benchmarks: () => request('/api/benchmarks'),
     runBenchmark: (id) => request(`/api/benchmarks/${id}/run`, { method: 'POST' }),

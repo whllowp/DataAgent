@@ -13,6 +13,7 @@ import com.dataagent.service.OpsService;
 import com.dataagent.service.ApiKeyService;
 import com.dataagent.service.AuditExportService;
 import com.dataagent.service.BenchmarkService;
+import com.dataagent.service.EtlService;
 import com.dataagent.service.AuditService;
 import com.dataagent.service.FeedbackService;
 import com.dataagent.service.LineageService;
@@ -28,6 +29,8 @@ import com.dataagent.web.ApiException;
 import com.dataagent.web.dto.ApiKeyDtos;
 import com.dataagent.web.dto.AuditDtos;
 import com.dataagent.web.dto.BenchmarkDtos;
+import com.dataagent.web.dto.DolphinSchedulerDtos;
+import com.dataagent.web.dto.EtlDtos;
 import com.dataagent.web.dto.FeedbackDtos;
 import com.dataagent.web.dto.HistoryDtos;
 import com.dataagent.web.dto.MemoryCandidateDtos;
@@ -107,6 +110,8 @@ class DataAgentIntegrationTest {
     private LineageService lineage;
     @Autowired
     private ApiKeyService apiKeys;
+    @Autowired
+    private EtlService etl;
     @Autowired
     private PiiService pii;
     @Autowired
@@ -396,10 +401,67 @@ class DataAgentIntegrationTest {
     @Test
     void exportsAuditJsonlAndPurgesByRetention() {
         audit.record("EXPORT_TEST", "SUCCESS", "TEST", null, demo.getId(), "export probe");
+        assertFalse(audit.search(null, "EXPORT_TEST", null, null, null, null, 10, 0).isEmpty());
         String jsonl = auditExport.jsonl(java.time.Instant.now().minusSeconds(3600), java.time.Instant.now());
         assertTrue(jsonl.contains("EXPORT_TEST"));
         assertNotNull(auditExport.export(new AuditDtos.ExportRequest(
                 java.time.Instant.now().minusSeconds(3600), java.time.Instant.now(), "FILE")));
+    }
+
+    @Test
+    void importsDolphinSchedulerTopologyAndAnalyzesEndToEndLineage() {
+        long base = 9_000_000L + Math.abs(System.nanoTime() % 1_000_000L);
+        long first = base;
+        long second = base + 1;
+        DolphinSchedulerDtos.ProcessDefinition upstream = new DolphinSchedulerDtos.ProcessDefinition(
+                first, "etl_ods_to_dwd_" + base, "test", "ONLINE",
+                new DolphinSchedulerDtos.Schedule("0 0 2 * * ?", null, "Asia/Shanghai", null, "ONLINE"),
+                java.util.List.of(
+                        new DolphinSchedulerDtos.TaskDefinition(1L, "extract_ods", "SQL", "SQL",
+                                java.util.Map.of("sql", "INSERT OVERWRITE TABLE dwd_etl SELECT * FROM ods_etl"),
+                                null, 1, null),
+                        new DolphinSchedulerDtos.TaskDefinition(2L, "build_ads", "SQL", "SQL",
+                                java.util.Map.of("sql", "INSERT OVERWRITE TABLE ads_etl SELECT * FROM dwd_etl"),
+                                null, 2, null)),
+                null,
+                java.util.List.of(new DolphinSchedulerDtos.TaskRelation(1L, 2L, "ALL_SUCCESS", 0L)),
+                null, java.util.List.of());
+        DolphinSchedulerDtos.ProcessDefinition downstream = new DolphinSchedulerDtos.ProcessDefinition(
+                second, "etl_ads_publish_" + base, "test", "ONLINE",
+                new DolphinSchedulerDtos.Schedule("0 30 2 * * ?", null, "Asia/Shanghai", null, "ONLINE"),
+                java.util.List.of(new DolphinSchedulerDtos.TaskDefinition(3L, "publish", "SQL", "SQL",
+                        java.util.Map.of("sql", "INSERT OVERWRITE TABLE ads_report SELECT * FROM ads_etl"),
+                        null, 1, null)),
+                null, null, null,
+                java.util.List.of(new DolphinSchedulerDtos.WorkflowDependency(
+                        first, null, second, null, "ALL_SUCCESS", 0L)));
+        EtlDtos.ImportResult imported = etl.importDolphinScheduler(
+                new DolphinSchedulerDtos.ImportRequest("default", 1L, "etl-test",
+                        java.util.List.of(upstream, downstream)));
+        assertEquals(2, imported.workflows());
+        assertEquals(3, imported.tasks());
+        assertEquals(1, imported.taskDependencies());
+        assertEquals(1, imported.workflowDependencies());
+
+        EtlDtos.WorkflowView firstView = etl.list().stream()
+                .filter(item -> ("etl_ods_to_dwd_" + base).equals(item.name())).findFirst().orElseThrow();
+        EtlDtos.WorkflowGraph graph = etl.graph(firstView.id());
+        assertEquals(2, graph.nodes().size());
+        assertEquals(1, graph.edges().size());
+        assertEquals(2, graph.topologicalOrder().size());
+        assertTrue(graph.cycles().isEmpty());
+
+        EtlDtos.TableLineage endToEnd = etl.lineage("ods_etl", "downstream", 10);
+        assertTrue(endToEnd.nodes().stream().anyMatch(node -> "DWD_ETL".equals(node.table())));
+        assertTrue(endToEnd.nodes().stream().anyMatch(node -> "ADS_ETL".equals(node.table())));
+        assertFalse(endToEnd.workflows().isEmpty());
+
+        EtlDtos.WorkflowView secondView = etl.list().stream()
+                .filter(item -> ("etl_ads_publish_" + base).equals(item.name())).findFirst().orElseThrow();
+        EtlDtos.Analysis analysis = etl.analysis(secondView.id());
+        assertFalse(analysis.upstreamWorkflows().isEmpty());
+        assertNotNull(analysis.schedule().nextRun());
+        assertFalse(lineage.impact("ods_etl").etlTasks().isEmpty());
     }
 
     @Test

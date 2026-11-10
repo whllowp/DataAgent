@@ -28,7 +28,7 @@ flowchart TB
     direction TB
     Panel["DataAgent SQL 面板<br/>Schema 树 / 编辑器 / 结果 / 历史 / 知识库"]
     DSH["DSH Agent + 大模型"]
-    MCP["MCP stdio bridge<br/>35 个 dataagent_* 工具"]
+    MCP["MCP stdio bridge<br/>40 个 dataagent_* 工具"]
     Panel -->|"HTTPS / REST"| Gateway
     DSH -->|"tool call"| MCP
     MCP -->|"HTTPS / REST"| Gateway
@@ -365,6 +365,18 @@ EXPLAIN <sql>
 - 每日 04:30 按 retention-days 清理
 - `/v3/api-docs` 契约测试；GitHub Actions 跑后端测试 + Studio 构建 + 产物检查
 
+### 3.21 ETL 与 DolphinScheduler 血缘
+
+- `etl_workflow` / `etl_task`：DolphinScheduler process definition 与 task definition 映射
+- `etl_task_dependency`：task relation（preTaskCode/postTaskCode），含 condition/lag
+- `etl_workflow_dependency`：跨 workflow 依赖
+- SQL 自动解析 source/target 表；taskParams 可覆盖
+- 拓扑排序、关键路径、环、孤立任务、nextRun
+- `/api/etl/lineage` 端到端表级追踪
+- 通用 `/api/lineage/impact` 合并 ETL 任务
+
+详见 [ETL-LINEAGE.md](ETL-LINEAGE.md)。
+
 ## 4. 数据模型
 
 ```mermaid
@@ -478,6 +490,10 @@ V9 新增：
 
 - `api_key` / `api_key_datasource`：分权 Key 与数据源 ACL。
 - `datasource.tenant_id`：租户隔离。
+
+V10 新增：
+
+- `etl_workflow` / `etl_task` / `etl_task_dependency` / `etl_workflow_dependency`：ETL 任务与 DolphinScheduler 调度拓扑。
 
 ## 5. 关键流程
 
@@ -649,6 +665,11 @@ dsh-plugin/
 | `dataagent_lineage_impact` | 表级影响分析 |
 | `dataagent_lineage_fields` | 字段级血缘 |
 | `dataagent_pii_classify` | PII 分类 |
+| `dataagent_etl_overview` | ETL 概览 |
+| `dataagent_etl_workflows` | ETL workflow 列表 |
+| `dataagent_etl_analysis` | ETL 端到端分析 |
+| `dataagent_etl_lineage` | ETL 表级血缘 |
+| `dataagent_etl_sync_dolphinscheduler` | DolphinScheduler 导入 |
 
 所有工具最终受云端的只读网关约束；模型不能通过 MCP 绕过 `SqlGuard`。
 

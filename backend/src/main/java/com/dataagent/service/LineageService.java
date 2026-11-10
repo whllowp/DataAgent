@@ -1,11 +1,16 @@
 package com.dataagent.service;
 
+import com.dataagent.domain.EtlTask;
+import com.dataagent.domain.EtlWorkflow;
 import com.dataagent.domain.SemanticEntity;
 import com.dataagent.domain.SqlAsset;
 import com.dataagent.domain.VerifiedQuery;
+import com.dataagent.repository.EtlTaskRepository;
+import com.dataagent.repository.EtlWorkflowRepository;
 import com.dataagent.repository.SemanticEntityRepository;
 import com.dataagent.repository.SqlAssetRepository;
 import com.dataagent.repository.VerifiedQueryRepository;
+import com.dataagent.security.AuthContext;
 import com.dataagent.web.dto.LineageDtos;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +37,8 @@ public class LineageService {
             "(?i)\\b(?:FROM|JOIN)\\s+([a-z_][\\w$]*(?:\\.[a-z_][\\w$]*)?)(?:\\s+(?:AS\\s+)?([a-z_][\\w$]*))?");
     private static final Pattern QUALIFIED_FIELD = Pattern.compile(
             "(?i)\\b([a-z_][\\w$]*)\\.([a-z_][\\w$]*)\\b");
+    private static final Pattern TARGET = Pattern.compile(
+            "(?i)\\b(?:INSERT\\s+(?:OVERWRITE\\s+)?(?:INTO\\s+)?(?:TABLE\\s+)?|MERGE\\s+INTO\\s+|CREATE\\s+TABLE\\s+)([a-z_][\\w$]*(?:\\.[a-z_][\\w$]*)?)");
     private static final Set<String> ALIAS_STOP = Set.of(
             "WHERE", "ON", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "FULL", "CROSS",
             "GROUP", "ORDER", "LIMIT", "OFFSET", "UNION", "AS", "USING", "SET", "VALUES",
@@ -41,13 +48,18 @@ public class LineageService {
     private final VerifiedQueryRepository verifiedQueries;
     private final SemanticEntityRepository entities;
     private final PiiService pii;
+    private final EtlWorkflowRepository etlWorkflows;
+    private final EtlTaskRepository etlTasks;
 
     public LineageService(SqlAssetRepository assets, VerifiedQueryRepository verifiedQueries,
-                          SemanticEntityRepository entities, PiiService pii) {
+                          SemanticEntityRepository entities, PiiService pii,
+                          EtlWorkflowRepository etlWorkflows, EtlTaskRepository etlTasks) {
         this.assets = assets;
         this.verifiedQueries = verifiedQueries;
         this.entities = entities;
         this.pii = pii;
+        this.etlWorkflows = etlWorkflows;
+        this.etlTasks = etlTasks;
     }
 
     @Transactional(readOnly = true)
@@ -55,22 +67,32 @@ public class LineageService {
         Map<String, int[]> counts = new LinkedHashMap<>();
         for (SqlAsset asset : assets.findAll()) {
             for (String table : extractTables(asset.getSqlText())) {
-                counts.computeIfAbsent(table, ignored -> new int[3])[0]++;
+                counts.computeIfAbsent(table, ignored -> new int[4])[0]++;
             }
         }
         for (VerifiedQuery query : verifiedQueries.findAll()) {
             for (String table : extractTables(query.getSqlText())) {
-                counts.computeIfAbsent(table, ignored -> new int[3])[1]++;
+                counts.computeIfAbsent(table, ignored -> new int[4])[1]++;
             }
         }
         for (SemanticEntity entity : entities.findAll()) {
             for (String table : splitTables(entity.getPhysicalTables())) {
-                counts.computeIfAbsent(table, ignored -> new int[3])[2]++;
+                counts.computeIfAbsent(table, ignored -> new int[4])[2]++;
+            }
+        }
+        for (EtlTask task : tenantEtlTasks()) {
+            Set<String> touched = new LinkedHashSet<>(extractTables(task.getSqlText()));
+            touched.addAll(splitTables(task.getSourceTables()));
+            if (task.getTargetTable() != null) {
+                touched.add(canonical(task.getTargetTable()));
+            }
+            for (String table : touched) {
+                counts.computeIfAbsent(table, ignored -> new int[4])[3]++;
             }
         }
         return counts.entrySet().stream()
                 .map(entry -> new LineageDtos.TableSummary(entry.getKey(), entry.getValue()[0],
-                        entry.getValue()[1], entry.getValue()[2]))
+                        entry.getValue()[1], entry.getValue()[2], entry.getValue()[3]))
                 .sorted(Comparator.comparing(LineageDtos.TableSummary::table))
                 .toList();
     }
@@ -96,7 +118,32 @@ public class LineageService {
                 .map(entity -> new LineageDtos.EntityRef(entity.getId(), entity.getName(),
                         entity.getDisplayName(), entity.getPhysicalTables()))
                 .toList();
-        return new LineageDtos.Impact(normalized, assetRefs, verifiedRefs, entityRefs);
+        List<EtlWorkflow> workflowList = etlWorkflows.findByTenantIdOrderByNameAsc(
+                AuthContext.currentOrSystem().tenantId());
+        Map<java.util.UUID, EtlWorkflow> workflowById = workflowList.stream()
+                .collect(java.util.stream.Collectors.toMap(EtlWorkflow::getId, item -> item));
+        List<LineageDtos.EtlRef> etlRefs = tenantEtlTasks().stream()
+                .filter(task -> references(task.getSqlText(), normalized)
+                        || splitTables(task.getSourceTables()).contains(normalized)
+                        || normalized.equals(canonical(task.getTargetTable())))
+                .map(task -> {
+                    EtlWorkflow workflow = workflowById.get(task.getWorkflowId());
+                    return new LineageDtos.EtlRef(task.getId(), task.getName(), task.getTaskType(),
+                            task.getWorkflowId(), workflow == null ? null : workflow.getName(),
+                            workflow == null ? null : workflow.getScheduleCron(),
+                            task.getSourceTables(), task.getTargetTable());
+                })
+                .toList();
+        return new LineageDtos.Impact(normalized, assetRefs, verifiedRefs, entityRefs, etlRefs);
+    }
+
+    private List<EtlTask> tenantEtlTasks() {
+        List<EtlWorkflow> workflowList = etlWorkflows.findByTenantIdOrderByNameAsc(
+                AuthContext.currentOrSystem().tenantId());
+        if (workflowList.isEmpty()) {
+            return List.of();
+        }
+        return etlTasks.findByWorkflowIdIn(workflowList.stream().map(EtlWorkflow::getId).toList());
     }
 
     public Set<String> extractTables(String sql) {
@@ -118,6 +165,14 @@ public class LineageService {
             }
         }
         return result;
+    }
+
+    public String extractTargetTable(String sql) {
+        if (sql == null || sql.isBlank()) {
+            return null;
+        }
+        Matcher matcher = TARGET.matcher(strip(sql));
+        return matcher.find() ? canonical(matcher.group(1)) : null;
     }
 
     private static String canonical(String table) {
