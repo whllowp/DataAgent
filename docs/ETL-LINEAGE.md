@@ -168,7 +168,54 @@ GET /api/etl/lineage?table=ods_orders&direction=downstream&depth=10
 - `depth` 控制最大深度
 - 返回节点、边、相关 workflow
 
-## 4. 与通用血缘合并
+## 4. 字段级 ETL 映射
+
+`FieldMappingParser` 解析 `INSERT ... SELECT`：
+
+- 目标表：`INSERT [OVERWRITE] TABLE` / `MERGE INTO` / `CREATE TABLE AS`
+- 目标列：`INSERT INTO t (col1, col2)` 显式列；没有时使用 SELECT alias 或 `COL_n`
+- 源字段：`alias.column` + `FROM/JOIN ... alias`
+- 表达式：保留原始表达式，支持 `CAST`、函数、`*`
+
+持久化到 `lineage_field_edge`，`kind=ETL_TASK`。
+
+接口：
+
+```http
+GET /api/etl/tasks/{taskId}/fields
+GET /api/etl/field-lineage?table=ODS_ORDERS&column=AMOUNT
+POST /api/etl/lineage/rebuild
+```
+
+`/api/lineage/field-impact` 的 `fieldEdges` 同时包含 ETL 和 OpenLineage 字段边。
+
+## 5. OpenLineage / Marquez
+
+兼容 Marquez 的采集路径：
+
+```http
+POST /api/v1/lineage
+POST /api/openlineage/events
+GET  /api/openlineage/events?jobName=
+GET  /api/openlineage/jobs
+```
+
+支持标准 RunEvent：
+
+- `eventType`、`eventTime`、`run.runId`
+- `job.namespace/name`
+- `inputs[]` / `outputs[]`
+- `facets.columnLineage.fields` → `lineage_field_edge`
+
+采集后自动：
+
+- 写入 `openlineage_event`
+- 维护输入表 → 输出表的 `lineage_edge`（kind=OPENLINEAGE）
+- 维护字段级边（kind=OPENLINEAGE）
+- 在 `/api/lineage/impact` 返回 `openLineageJobs`
+- 在 `/api/lineage/field-impact` 返回 OpenLineage 字段边
+
+## 6. 与通用血缘合并
 
 `GET /api/lineage/impact?table=` 现在同时返回：
 
@@ -191,7 +238,7 @@ ODS 表
   └─ 语义实体 / Verified Query
 ```
 
-## 5. 调度语义
+## 7. 调度语义
 
 - `schedule_cron` 支持 6 段 Spring Cron 和 7 段 Quartz Cron（自动去掉 year）
 - `nextRun` 按 workflow 时区计算
@@ -199,17 +246,17 @@ ODS 表
 - 任务依赖表示 workflow 内 DAG
 - 条件与 lag 仅存储和展示，不执行调度；执行仍由 DolphinScheduler 负责
 
-## 6. 当前边界
+## 8. 当前边界
 
 - 当前是 DolphinScheduler **导出/API payload 导入**，未内置 DolphinScheduler 客户端自动拉取
 - 任务 SQL 解析是启发式，复杂存储过程/动态 SQL 需在 taskParams 中显式提供 source/target
 - workflow 依赖的 `conditionType/lag` 是元数据，不在 DataAgent 内调度
 - 尚未做 ETL 运行实例、SLA、补数/重跑血缘
 
-## 7. 后续
+## 9. 后续
 
 - DolphinScheduler REST 拉取 + 定时同步
 - 运行实例血缘（instance/task instance）
 - SLA/延迟传播分析
-- 字段级 ETL 映射
-- 与 OpenLineage/Marquez 事件模型对齐
+- 与 Marquez 的完整 job/run API 对齐
+- 自动向前端推送 OpenLineage 事件

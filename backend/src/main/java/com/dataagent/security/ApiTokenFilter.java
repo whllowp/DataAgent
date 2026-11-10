@@ -118,6 +118,9 @@ public class ApiTokenFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/etl/sync") && "POST".equalsIgnoreCase(method)) {
             return principal.isAdmin();
         }
+        if (path.startsWith("/api/etl/lineage/rebuild") && "POST".equalsIgnoreCase(method)) {
+            return principal.isAdmin();
+        }
         if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method)) {
             return true;
         }

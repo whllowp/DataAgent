@@ -14,6 +14,9 @@ import com.dataagent.service.ApiKeyService;
 import com.dataagent.service.AuditExportService;
 import com.dataagent.service.BenchmarkService;
 import com.dataagent.service.EtlService;
+import com.dataagent.service.FieldMappingParser;
+import com.dataagent.service.LineageMaintenanceService;
+import com.dataagent.service.OpenLineageService;
 import com.dataagent.service.AuditService;
 import com.dataagent.service.FeedbackService;
 import com.dataagent.service.LineageService;
@@ -35,6 +38,7 @@ import com.dataagent.web.dto.FeedbackDtos;
 import com.dataagent.web.dto.HistoryDtos;
 import com.dataagent.web.dto.MemoryCandidateDtos;
 import com.dataagent.web.dto.MemoryDtos;
+import com.dataagent.web.dto.OpenLineageDtos;
 import com.dataagent.web.dto.OptimizeDtos;
 import com.dataagent.web.dto.OpsDtos;
 import com.dataagent.web.dto.SemanticDtos;
@@ -47,6 +51,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
+import com.fasterxml.jackson.databind.JsonNode;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -112,6 +117,14 @@ class DataAgentIntegrationTest {
     private ApiKeyService apiKeys;
     @Autowired
     private EtlService etl;
+    @Autowired
+    private FieldMappingParser fieldParser;
+    @Autowired
+    private LineageMaintenanceService lineageMaintenance;
+    @Autowired
+    private OpenLineageService openLineage;
+    @Autowired
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     @Autowired
     private PiiService pii;
     @Autowired
@@ -450,6 +463,7 @@ class DataAgentIntegrationTest {
         assertEquals(1, graph.edges().size());
         assertEquals(2, graph.topologicalOrder().size());
         assertTrue(graph.cycles().isEmpty());
+        assertFalse(lineageMaintenance.taskFields(etl.tasks(firstView.id()).get(0).id()).isEmpty());
 
         EtlDtos.TableLineage endToEnd = etl.lineage("ods_etl", "downstream", 10);
         assertTrue(endToEnd.nodes().stream().anyMatch(node -> "DWD_ETL".equals(node.table())));
@@ -462,6 +476,48 @@ class DataAgentIntegrationTest {
         assertFalse(analysis.upstreamWorkflows().isEmpty());
         assertNotNull(analysis.schedule().nextRun());
         assertFalse(lineage.impact("ods_etl").etlTasks().isEmpty());
+    }
+
+    @Test
+    void mapsEltFieldsAndIngestsOpenLineageColumnLineage() throws Exception {
+        var mappings = fieldParser.parse(
+                "INSERT INTO dwd_f (id, amount) SELECT s.id AS id, s.amount AS amount FROM src_f s",
+                lineage);
+        assertTrue(mappings.stream().anyMatch(item -> "DWD_F".equals(item.targetTable())
+                && "ID".equals(item.targetColumn()) && "SRC_F".equals(item.sourceTable())
+                && "ID".equals(item.sourceColumn())));
+        assertTrue(mappings.stream().anyMatch(item -> "AMOUNT".equals(item.targetColumn())
+                && "AMOUNT".equals(item.sourceColumn())));
+
+        JsonNode event = objectMapper.readTree("""
+                {
+                  "eventType": "COMPLETE",
+                  "eventTime": "2026-11-11T00:00:00Z",
+                  "run": {"runId": "run-ol-1"},
+                  "job": {"namespace": "etl", "name": "ol_job"},
+                  "inputs": [{"namespace": "hive", "name": "hive.ods_ol"}],
+                  "outputs": [{
+                    "namespace": "hive",
+                    "name": "hive.dwd_ol",
+                    "facets": {
+                      "columnLineage": {
+                        "fields": {
+                          "ID": {
+                            "inputFields": [{"namespace": "hive", "name": "hive.ods_ol", "field": "ID"}],
+                            "transformationType": "IDENTITY"
+                          }
+                        }
+                      }
+                    }
+                  }]
+                }
+                """);
+        OpenLineageDtos.IngestResult ingested = openLineage.ingest(event);
+        assertEquals(1, ingested.tableEdges());
+        assertEquals(1, ingested.fieldEdges());
+        assertFalse(openLineage.events("ol_job").isEmpty());
+        assertFalse(lineageMaintenance.fieldLineage("ODS_OL", "ID").isEmpty());
+        assertFalse(lineage.impact("ODS_OL").openLineageJobs().isEmpty());
     }
 
     @Test

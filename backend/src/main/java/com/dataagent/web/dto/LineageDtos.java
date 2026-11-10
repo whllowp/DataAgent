@@ -55,12 +55,42 @@ public final class LineageDtos {
     ) {
     }
 
+    public record OpenLineageRef(
+            String jobName,
+            String runId,
+            String sourceTable,
+            String targetTable
+    ) {
+    }
+
+    public record FieldEdgeRef(
+            String sourceTable,
+            String sourceColumn,
+            String targetTable,
+            String targetColumn,
+            String expression,
+            String kind,
+            String jobName
+    ) {
+    }
+
     public record Impact(
             String table,
             List<AssetRef> assets,
             List<VerifiedRef> verifiedQueries,
             List<EntityRef> semanticEntities,
-            List<EtlRef> etlTasks
+            List<EtlRef> etlTasks,
+            List<OpenLineageRef> openLineageJobs
+    ) {
+    }
+
+    public record FieldImpact(
+            String table,
+            String column,
+            String piiType,
+            List<AssetRef> assets,
+            List<VerifiedRef> verifiedQueries,
+            List<FieldEdgeRef> fieldEdges
     ) {
     }
 
@@ -70,15 +100,6 @@ public final class LineageDtos {
             String piiType,
             int assetCount,
             int verifiedQueryCount
-    ) {
-    }
-
-    public record FieldImpact(
-            String table,
-            String column,
-            String piiType,
-            List<AssetRef> assets,
-            List<VerifiedRef> verifiedQueries
     ) {
     }
 }

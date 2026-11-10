@@ -57,6 +57,31 @@ public final class EtlDtos {
     ) {
     }
 
+    public record FieldMapping(
+            String sourceTable,
+            String sourceColumn,
+            String targetTable,
+            String targetColumn,
+            String expression,
+            boolean wildcard
+    ) {
+    }
+
+    public record FieldLineage(
+            UUID workflowId,
+            String workflowName,
+            UUID taskId,
+            String taskName,
+            String sourceTable,
+            String sourceColumn,
+            String targetTable,
+            String targetColumn,
+            String expression,
+            String jobName,
+            boolean wildcard
+    ) {
+    }
+
     public record WorkflowDependencyView(
             UUID id,
             UUID upstreamWorkflowId,

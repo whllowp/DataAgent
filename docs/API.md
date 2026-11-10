@@ -1160,6 +1160,42 @@ cron、timezone、nextRun、关键路径、拓扑顺序。
 - 边：fromTable、toTable、task、workflow、schedule
 - 相关 workflow 列表
 
+### `GET /api/etl/tasks/{taskId}/fields`
+
+返回该 ETL 任务的字段映射。
+
+### `GET /api/etl/field-lineage?table=ODS_ORDERS&column=AMOUNT`
+
+返回源字段 → 目标字段的 ETL/OpenLineage 字段边。
+
+### `POST /api/etl/lineage/rebuild`
+
+重建当前租户的 ETL table/field lineage（ADMIN）。
+
+### OpenLineage / Marquez
+
+```http
+POST /api/v1/lineage
+POST /api/openlineage/events
+GET  /api/openlineage/events?jobName=etl_job
+GET  /api/openlineage/jobs
+```
+
+接受标准 OpenLineage RunEvent，自动维护：
+
+- `lineage_edge`（表级）
+- `lineage_field_edge`（columnLineage）
+- `/api/lineage/impact` 中的 `openLineageJobs`
+- `/api/lineage/field-impact` 中的 `fieldEdges`
+
+### `GET /api/lineage/field-impact?table=&column=`
+
+现在返回：
+
+- SQL 资产
+- Verified Query
+- `fieldEdges`：ETL/OpenLineage 字段映射
+
 ## 17. curl 速查
 
 ```bash
@@ -1231,4 +1267,8 @@ curl -s "$BASE/api/etl/overview" -H "X-API-Key: $TOKEN"
 curl -s "$BASE/api/etl/workflows" -H "X-API-Key: $TOKEN"
 
 curl -s "$BASE/api/etl/lineage?table=ODS_ORDERS&direction=downstream" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/etl/field-lineage?table=ODS_ORDERS&column=AMOUNT" -H "X-API-Key: $TOKEN"
+
+curl -s "$BASE/api/openlineage/jobs" -H "X-API-Key: $TOKEN"
 ```

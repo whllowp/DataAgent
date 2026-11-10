@@ -760,6 +760,58 @@ const tools = [
     },
     handler: (args) => api('/api/etl/sync/dolphinscheduler', { method: 'POST', body: args }),
   },
+  {
+    name: 'dataagent_etl_field_lineage',
+    description: '查看 ETL 字段级映射：源表/字段、目标表/字段、表达式和所属任务。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        table: { type: 'string' },
+        column: { type: 'string' },
+      },
+      required: ['table'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => {
+      const params = new URLSearchParams({ table: args.table });
+      if (args.column) params.set('column', args.column);
+      return api(`/api/etl/field-lineage?${params.toString()}`);
+    },
+  },
+  {
+    name: 'dataagent_openlineage_events',
+    description: '查看已采集的 OpenLineage 事件，可按 jobName 过滤。',
+    inputSchema: {
+      type: 'object',
+      properties: { jobName: { type: 'string' } },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => {
+      const params = new URLSearchParams();
+      if (args.jobName) params.set('jobName', args.jobName);
+      return api(`/api/openlineage/events?${params.toString()}`);
+    },
+  },
+  {
+    name: 'dataagent_openlineage_jobs',
+    description: '查看 OpenLineage job 列表与最近事件时间。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    handler: () => api('/api/openlineage/jobs'),
+  },
+  {
+    name: 'dataagent_ingest_openlineage',
+    description: '接收标准 OpenLineage RunEvent（Marquez 兼容 /api/v1/lineage），自动维护表级与字段级血缘。',
+    inputSchema: {
+      type: 'object',
+      properties: { event: { type: 'object' } },
+      required: ['event'],
+      additionalProperties: false,
+    },
+    handler: (args) => api('/api/v1/lineage', { method: 'POST', body: args.event }),
+  },
 ];
 
 async function firstDatasourceId() {

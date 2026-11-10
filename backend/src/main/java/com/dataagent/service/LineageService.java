@@ -2,11 +2,15 @@ package com.dataagent.service;
 
 import com.dataagent.domain.EtlTask;
 import com.dataagent.domain.EtlWorkflow;
+import com.dataagent.domain.LineageEdge;
+import com.dataagent.domain.LineageFieldEdge;
 import com.dataagent.domain.SemanticEntity;
 import com.dataagent.domain.SqlAsset;
 import com.dataagent.domain.VerifiedQuery;
 import com.dataagent.repository.EtlTaskRepository;
 import com.dataagent.repository.EtlWorkflowRepository;
+import com.dataagent.repository.LineageEdgeRepository;
+import com.dataagent.repository.LineageFieldEdgeRepository;
 import com.dataagent.repository.SemanticEntityRepository;
 import com.dataagent.repository.SqlAssetRepository;
 import com.dataagent.repository.VerifiedQueryRepository;
@@ -50,16 +54,22 @@ public class LineageService {
     private final PiiService pii;
     private final EtlWorkflowRepository etlWorkflows;
     private final EtlTaskRepository etlTasks;
+    private final LineageEdgeRepository lineageEdges;
+    private final LineageFieldEdgeRepository lineageFieldEdges;
 
     public LineageService(SqlAssetRepository assets, VerifiedQueryRepository verifiedQueries,
                           SemanticEntityRepository entities, PiiService pii,
-                          EtlWorkflowRepository etlWorkflows, EtlTaskRepository etlTasks) {
+                          EtlWorkflowRepository etlWorkflows, EtlTaskRepository etlTasks,
+                          LineageEdgeRepository lineageEdges,
+                          LineageFieldEdgeRepository lineageFieldEdges) {
         this.assets = assets;
         this.verifiedQueries = verifiedQueries;
         this.entities = entities;
         this.pii = pii;
         this.etlWorkflows = etlWorkflows;
         this.etlTasks = etlTasks;
+        this.lineageEdges = lineageEdges;
+        this.lineageFieldEdges = lineageFieldEdges;
     }
 
     @Transactional(readOnly = true)
@@ -134,7 +144,15 @@ public class LineageService {
                             task.getSourceTables(), task.getTargetTable());
                 })
                 .toList();
-        return new LineageDtos.Impact(normalized, assetRefs, verifiedRefs, entityRefs, etlRefs);
+        String tenant = AuthContext.currentOrSystem().tenantId();
+        List<LineageDtos.OpenLineageRef> openLineageRefs = lineageEdges
+                .findByTenantIdAndSourceTable(tenant, normalized).stream()
+                .filter(edge -> "OPENLINEAGE".equals(edge.getKind()))
+                .map(edge -> new LineageDtos.OpenLineageRef(edge.getJobName(), edge.getRunId(),
+                        edge.getSourceTable(), edge.getTargetTable()))
+                .toList();
+        return new LineageDtos.Impact(normalized, assetRefs, verifiedRefs, entityRefs, etlRefs,
+                openLineageRefs);
     }
 
     private List<EtlTask> tenantEtlTasks() {
@@ -238,8 +256,19 @@ public class LineageService {
                 .map(query -> new LineageDtos.VerifiedRef(query.getId(), query.getQuestion(),
                         query.getStatus()))
                 .toList();
+        List<LineageDtos.FieldEdgeRef> fieldEdges = lineageFieldEdges
+                .findByTenantIdAndSourceTableAndSourceColumn(AuthContext.currentOrSystem().tenantId(),
+                        normalizedTable, normalizedColumn).stream()
+                .map(edge -> new LineageDtos.FieldEdgeRef(edge.getSourceTable(), edge.getSourceColumn(),
+                        edge.getTargetTable(), edge.getTargetColumn(), edge.getExpression(),
+                        edge.getKind(), edge.getJobName()))
+                .toList();
         return new LineageDtos.FieldImpact(normalizedTable, normalizedColumn,
-                pii.classify(normalizedColumn, normalizedColumn), assetRefs, verifiedRefs);
+                pii.classify(normalizedColumn, normalizedColumn), assetRefs, verifiedRefs, fieldEdges);
+    }
+
+    public Map<String, String> tableAliases(String sql) {
+        return aliasMap(sql);
     }
 
     private Map<String, String> aliasMap(String sql) {

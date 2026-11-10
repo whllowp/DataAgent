@@ -60,6 +60,7 @@ public class AuditService {
                 event.setDetail(truncate(detail, MAX_DETAIL));
                 event.setClientIp(clientIp);
                 event.setUserAgent(userAgent);
+                event.setCreatedAt(Instant.now());
                 events.save(event);
             });
         } catch (Exception error) {

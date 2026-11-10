@@ -28,7 +28,7 @@ flowchart TB
     direction TB
     Panel["DataAgent SQL 面板<br/>Schema 树 / 编辑器 / 结果 / 历史 / 知识库"]
     DSH["DSH Agent + 大模型"]
-    MCP["MCP stdio bridge<br/>40 个 dataagent_* 工具"]
+    MCP["MCP stdio bridge<br/>44 个 dataagent_* 工具"]
     Panel -->|"HTTPS / REST"| Gateway
     DSH -->|"tool call"| MCP
     MCP -->|"HTTPS / REST"| Gateway
@@ -377,6 +377,15 @@ EXPLAIN <sql>
 
 详见 [ETL-LINEAGE.md](ETL-LINEAGE.md)。
 
+### 3.22 字段级映射与 OpenLineage
+
+- `FieldMappingParser` 解析 INSERT...SELECT 的 select list、显式目标列、alias.column 和表达式
+- `lineage_edge` / `lineage_field_edge` 持久化 ETL 与 OpenLineage 血缘
+- 导入 ETL 后自动重建；每小时定时重建
+- `POST /api/v1/lineage` 兼容 Marquez，采集 OpenLineage RunEvent
+- 自动解析 `facets.columnLineage.fields` → 字段边
+- `/api/lineage/impact` 合并 OpenLineage jobs，`/api/lineage/field-impact` 合并字段边
+
 ## 4. 数据模型
 
 ```mermaid
@@ -494,6 +503,11 @@ V9 新增：
 V10 新增：
 
 - `etl_workflow` / `etl_task` / `etl_task_dependency` / `etl_workflow_dependency`：ETL 任务与 DolphinScheduler 调度拓扑。
+
+V11 新增：
+
+- `lineage_edge` / `lineage_field_edge`：派生的表级/字段级血缘。
+- `openlineage_event`：标准 OpenLineage RunEvent 原始事件。
 
 ## 5. 关键流程
 
@@ -670,6 +684,10 @@ dsh-plugin/
 | `dataagent_etl_analysis` | ETL 端到端分析 |
 | `dataagent_etl_lineage` | ETL 表级血缘 |
 | `dataagent_etl_sync_dolphinscheduler` | DolphinScheduler 导入 |
+| `dataagent_etl_field_lineage` | ETL 字段血缘 |
+| `dataagent_openlineage_events` | OpenLineage 事件 |
+| `dataagent_openlineage_jobs` | OpenLineage job 列表 |
+| `dataagent_ingest_openlineage` | 采集 OpenLineage |
 
 所有工具最终受云端的只读网关约束；模型不能通过 MCP 绕过 `SqlGuard`。
 

@@ -43,18 +43,21 @@ public class EtlService {
     private final EtlTaskDependencyRepository taskDependencies;
     private final EtlWorkflowDependencyRepository workflowDependencies;
     private final LineageService lineage;
+    private final LineageMaintenanceService lineageMaintenance;
     private final AuditService audit;
     private final ObjectMapper objectMapper;
 
     public EtlService(EtlWorkflowRepository workflows, EtlTaskRepository tasks,
                       EtlTaskDependencyRepository taskDependencies,
                       EtlWorkflowDependencyRepository workflowDependencies,
-                      LineageService lineage, AuditService audit, ObjectMapper objectMapper) {
+                      LineageService lineage, LineageMaintenanceService lineageMaintenance,
+                      AuditService audit, ObjectMapper objectMapper) {
         this.workflows = workflows;
         this.tasks = tasks;
         this.taskDependencies = taskDependencies;
         this.workflowDependencies = workflowDependencies;
         this.lineage = lineage;
+        this.lineageMaintenance = lineageMaintenance;
         this.audit = audit;
         this.objectMapper = objectMapper;
     }
@@ -419,6 +422,7 @@ public class EtlService {
         }
         audit.record("ETL_SYNC", "SUCCESS", "ETL", null, null,
                 "source=DOLPHINSCHEDULER workflows=" + workflowCount + " tasks=" + taskCount);
+        lineageMaintenance.rebuildTenant(tenant);
         return new EtlDtos.ImportResult(workflowCount, taskCount, taskDependencyCount,
                 workflowDependencyCount, warnings);
     }
