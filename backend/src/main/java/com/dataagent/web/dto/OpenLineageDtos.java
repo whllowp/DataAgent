@@ -32,6 +32,37 @@ public final class OpenLineageDtos {
     ) {
     }
 
+    public record RunTableEdge(String sourceTable, String targetTable) {
+    }
+
+    public record RunFieldEdge(String sourceTable, String sourceColumn, String targetTable,
+                               String targetColumn, String expression) {
+    }
+
+    public record RunView(
+            String runId,
+            String eventType,
+            Instant eventTime,
+            String inputsJson,
+            String outputsJson,
+            String columnLineageJson,
+            List<RunTableEdge> tableEdges,
+            List<RunFieldEdge> fieldEdges
+    ) {
+    }
+
+    public record JobDetail(
+            String namespace,
+            String name,
+            Instant createdAt,
+            Instant updatedAt,
+            List<RunView> runs
+    ) {
+    }
+
+    public record NamespaceView(String namespace, long jobs, long events) {
+    }
+
     public record IngestResult(EventView event, int tableEdges, int fieldEdges) {
     }
 

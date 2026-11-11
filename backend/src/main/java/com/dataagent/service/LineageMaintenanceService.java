@@ -32,17 +32,20 @@ public class LineageMaintenanceService {
     private final LineageFieldEdgeRepository fieldEdges;
     private final LineageService lineage;
     private final FieldMappingParser fieldParser;
+    private final TargetSchemaResolver targetSchema;
 
     public LineageMaintenanceService(EtlWorkflowRepository workflows, EtlTaskRepository tasks,
                                      LineageEdgeRepository edges,
                                      LineageFieldEdgeRepository fieldEdges,
-                                     LineageService lineage, FieldMappingParser fieldParser) {
+                                     LineageService lineage, FieldMappingParser fieldParser,
+                                     TargetSchemaResolver targetSchema) {
         this.workflows = workflows;
         this.tasks = tasks;
         this.edges = edges;
         this.fieldEdges = fieldEdges;
         this.lineage = lineage;
         this.fieldParser = fieldParser;
+        this.targetSchema = targetSchema;
     }
 
     @Transactional
@@ -81,7 +84,8 @@ public class LineageMaintenanceService {
                 edges.save(edge);
                 count++;
             }
-            List<EtlDtos.FieldMapping> mappings = fieldParser.parse(task.getSqlText(), lineage);
+            List<EtlDtos.FieldMapping> mappings = fieldParser.parse(task.getSqlText(), lineage,
+                    targetSchema.columns(task.getDatasourceId(), target));
             if (mappings.isEmpty() && sourceTables.size() == 1) {
                 mappings = List.of(new EtlDtos.FieldMapping(sourceTables.get(0), "*", target, "*",
                         "task output", true));

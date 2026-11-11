@@ -13,9 +13,11 @@ import com.dataagent.service.OpsService;
 import com.dataagent.service.ApiKeyService;
 import com.dataagent.service.AuditExportService;
 import com.dataagent.service.BenchmarkService;
+import com.dataagent.service.DolphinSchedulerClient;
 import com.dataagent.service.EtlService;
 import com.dataagent.service.FieldMappingParser;
 import com.dataagent.service.LineageMaintenanceService;
+import com.dataagent.service.MetadataService;
 import com.dataagent.service.OpenLineageService;
 import com.dataagent.service.AuditService;
 import com.dataagent.service.FeedbackService;
@@ -52,6 +54,10 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.sun.net.httpserver.HttpServer;
+
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -123,6 +129,8 @@ class DataAgentIntegrationTest {
     private LineageMaintenanceService lineageMaintenance;
     @Autowired
     private OpenLineageService openLineage;
+    @Autowired
+    private MetadataService metadata;
     @Autowired
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     @Autowired
@@ -518,6 +526,59 @@ class DataAgentIntegrationTest {
         assertFalse(openLineage.events("ol_job").isEmpty());
         assertFalse(lineageMaintenance.fieldLineage("ODS_OL", "ID").isEmpty());
         assertFalse(lineage.impact("ODS_OL").openLineageJobs().isEmpty());
+        assertFalse(openLineage.jobs("etl").isEmpty());
+        assertFalse(openLineage.job("etl", "ol_job").runs().isEmpty());
+        assertEquals(1, openLineage.run("etl", "ol_job", "run-ol-1").tableEdges().size());
+        assertEquals(1, openLineage.run("etl", "ol_job", "run-ol-1").fieldEdges().size());
+    }
+
+    @Test
+    void mapsTargetSchemaColumnsAndPullsDolphinScheduler() throws Exception {
+        var targetColumns = metadata.describeTable(demo.getId(), null, "CUSTOMERS").columns().stream()
+                .map(column -> column.name().toUpperCase(java.util.Locale.ROOT)).toList();
+        assertFalse(targetColumns.isEmpty());
+
+        long code = 8_000_000L + Math.abs(System.nanoTime() % 1_000_000L);
+        DolphinSchedulerDtos.TaskDefinition task = new DolphinSchedulerDtos.TaskDefinition(
+                1L, "schema_map", "SQL", "SQL",
+                java.util.Map.of("sql", "INSERT INTO CUSTOMERS SELECT c.id, c.city FROM CUSTOMERS c",
+                        "datasourceId", demo.getId().toString()), null, 1, null);
+        DolphinSchedulerDtos.ProcessDefinition definition = new DolphinSchedulerDtos.ProcessDefinition(
+                code, "schema_map_workflow_" + code, "test", "ONLINE", null,
+                java.util.List.of(task), null, null, null, null);
+        etl.importDolphinScheduler(new DolphinSchedulerDtos.ImportRequest(
+                "default", 1L, "test", java.util.List.of(definition)));
+        EtlDtos.WorkflowView workflow = etl.list().stream()
+                .filter(item -> ("schema_map_workflow_" + code).equals(item.name())).findFirst().orElseThrow();
+        EtlDtos.TaskView taskView = etl.tasks(workflow.id()).get(0);
+        var fields = lineageMaintenance.taskFields(taskView.id());
+        assertFalse(fields.isEmpty());
+        assertTrue(fields.stream().anyMatch(field -> targetColumns.get(0).equals(field.targetColumn())));
+        assertTrue(fields.stream().noneMatch(field -> field.targetColumn().startsWith("COL_")));
+
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/dolphinscheduler/projects/777/process-definition", exchange -> {
+            String body = "{\"data\":{\"totalList\":[{\"code\":99,\"name\":\"ds_pull\","
+                    + "\"releaseState\":\"ONLINE\",\"schedule\":{\"crontab\":\"0 0 3 * * ?\"},"
+                    + "\"taskDefinitions\":[{\"code\":11,\"name\":\"pull_task\",\"taskType\":\"SQL\","
+                    + "\"taskParams\":{\"sql\":\"INSERT INTO DWD_PULL SELECT * FROM ODS_PULL\"}}]}]}}";
+            byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var props = new com.dataagent.config.DataAgentProperties();
+            props.getDolphinscheduler().setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
+            props.getDolphinscheduler().setEnabled(true);
+            var request = new DolphinSchedulerClient(props, objectMapper).pull(777L);
+            assertEquals(1, request.processDefinitions().size());
+            assertEquals("ds_pull", request.processDefinitions().get(0).name());
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test

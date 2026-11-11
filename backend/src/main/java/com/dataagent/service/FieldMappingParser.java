@@ -28,6 +28,11 @@ public class FieldMappingParser {
     private static final Pattern IDENTIFIER = Pattern.compile("(?i)^[a-z_][\\w$]*$");
 
     public List<EtlDtos.FieldMapping> parse(String sql, LineageService lineage) {
+        return parse(sql, lineage, List.of());
+    }
+
+    public List<EtlDtos.FieldMapping> parse(String sql, LineageService lineage,
+                                            List<String> schemaColumns) {
         List<EtlDtos.FieldMapping> result = new ArrayList<>();
         if (sql == null || sql.isBlank()) {
             return result;
@@ -39,6 +44,9 @@ public class FieldMappingParser {
         String cleaned = strip(sql);
         Map<String, String> aliases = lineage.tableAliases(cleaned);
         List<String> targetColumns = insertColumns(cleaned);
+        if (targetColumns.isEmpty() && schemaColumns != null && !schemaColumns.isEmpty()) {
+            targetColumns = schemaColumns;
+        }
         String select = selectList(cleaned);
         if (select == null || select.isBlank() || "*".equals(select.trim())) {
             result.add(new EtlDtos.FieldMapping(null, "*", targetTable, "*", "*", true));

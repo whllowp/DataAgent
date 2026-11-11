@@ -110,6 +110,12 @@ dataagent:
     siem-webhook: ${DATAAGENT_AUDIT_SIEM_WEBHOOK:}
     object-store-url: ${DATAAGENT_AUDIT_OBJECT_STORE_URL:}
     object-store-token: ${DATAAGENT_AUDIT_OBJECT_STORE_TOKEN:}
+  dolphinscheduler:
+    enabled: ${DATAAGENT_DS_ENABLED:false}
+    base-url: ${DATAAGENT_DS_BASE_URL:}
+    token: ${DATAAGENT_DS_TOKEN:}
+    project-code: ${DATAAGENT_DS_PROJECT_CODE:}
+    project-name: ${DATAAGENT_DS_PROJECT_NAME:}
 
 logging:
   level:

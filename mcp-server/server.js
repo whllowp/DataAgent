@@ -812,6 +812,51 @@ const tools = [
     },
     handler: (args) => api('/api/v1/lineage', { method: 'POST', body: args.event }),
   },
+  {
+    name: 'dataagent_openlineage_job',
+    description: '查看 OpenLineage job 详情和运行实例列表。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        namespace: { type: 'string' },
+        job: { type: 'string' },
+      },
+      required: ['namespace', 'job'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => api(`/api/v1/namespaces/${encodeURIComponent(args.namespace)}/jobs/${encodeURIComponent(args.job)}`),
+  },
+  {
+    name: 'dataagent_openlineage_run',
+    description: '查看单个 OpenLineage run 实例级血缘：输入/输出表、字段映射、列级血缘。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        namespace: { type: 'string' },
+        job: { type: 'string' },
+        runId: { type: 'string' },
+      },
+      required: ['namespace', 'job', 'runId'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => api(`/api/v1/namespaces/${encodeURIComponent(args.namespace)}/jobs/${encodeURIComponent(args.job)}/runs/${encodeURIComponent(args.runId)}`),
+  },
+  {
+    name: 'dataagent_etl_pull_dolphinscheduler',
+    description: '从 DolphinScheduler REST API 拉取 process definitions、task relations 和 schedules，并导入 ETL 血缘。',
+    inputSchema: {
+      type: 'object',
+      properties: { projectCode: { type: 'integer' } },
+      additionalProperties: false,
+    },
+    handler: (args) => {
+      const params = new URLSearchParams();
+      if (args.projectCode) params.set('projectCode', String(args.projectCode));
+      return api(`/api/etl/sync/dolphinscheduler/pull?${params.toString()}`, { method: 'POST' });
+    },
+  },
 ];
 
 async function firstDatasourceId() {

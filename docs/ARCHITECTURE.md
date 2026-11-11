@@ -28,7 +28,7 @@ flowchart TB
     direction TB
     Panel["DataAgent SQL 面板<br/>Schema 树 / 编辑器 / 结果 / 历史 / 知识库"]
     DSH["DSH Agent + 大模型"]
-    MCP["MCP stdio bridge<br/>44 个 dataagent_* 工具"]
+    MCP["MCP stdio bridge<br/>47 个 dataagent_* 工具"]
     Panel -->|"HTTPS / REST"| Gateway
     DSH -->|"tool call"| MCP
     MCP -->|"HTTPS / REST"| Gateway
@@ -386,6 +386,13 @@ EXPLAIN <sql>
 - 自动解析 `facets.columnLineage.fields` → 字段边
 - `/api/lineage/impact` 合并 OpenLineage jobs，`/api/lineage/field-impact` 合并字段边
 
+### 3.23 目标 schema、DS REST 与 Run 血缘
+
+- `TargetSchemaResolver` 读取目标数据源元数据，按 ordinal 映射真实目标列，替代 `COL_n`
+- `DolphinSchedulerClient` 拉取 process-definition 列表，必要时补 `/view`，复用导入/重建
+- Marquez 查询 API：namespaces/jobs/job/runs/run
+- run 级返回 inputs/outputs/tableEdges/fieldEdges
+
 ## 4. 数据模型
 
 ```mermaid
@@ -688,6 +695,9 @@ dsh-plugin/
 | `dataagent_openlineage_events` | OpenLineage 事件 |
 | `dataagent_openlineage_jobs` | OpenLineage job 列表 |
 | `dataagent_ingest_openlineage` | 采集 OpenLineage |
+| `dataagent_openlineage_job` | OpenLineage job |
+| `dataagent_openlineage_run` | OpenLineage run |
+| `dataagent_etl_pull_dolphinscheduler` | DS REST 拉取 |
 
 所有工具最终受云端的只读网关约束；模型不能通过 MCP 绕过 `SqlGuard`。
 

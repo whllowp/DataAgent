@@ -107,4 +107,11 @@ public class EtlController {
             @Valid @RequestBody DolphinSchedulerDtos.ImportRequest request) {
         return etl.importDolphinScheduler(request);
     }
+
+    @PostMapping("/sync/dolphinscheduler/pull")
+    @ResponseStatus(HttpStatus.CREATED)
+    public EtlDtos.ImportResult pullDolphinScheduler(
+            @RequestParam(required = false) Long projectCode) {
+        return etl.pullDolphinScheduler(projectCode);
+    }
 }

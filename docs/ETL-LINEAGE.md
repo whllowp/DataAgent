@@ -125,6 +125,31 @@ POST /api/etl/sync/dolphinscheduler
 - `lastSyncedAt` 更新
 - 写审计 `ETL_SYNC`
 
+### 从 DolphinScheduler REST 拉取
+
+```http
+POST /api/etl/sync/dolphinscheduler/pull?projectCode=123
+```
+
+配置：
+
+```yaml
+dataagent:
+  dolphinscheduler:
+    enabled: true
+    base-url: http://dolphinscheduler:12345
+    token: ${DATAAGENT_DS_TOKEN}
+    project-code: 123
+    project-name: sales
+```
+
+客户端：
+
+- `GET /dolphinscheduler/projects/{project}/process-definition`
+- 对缺少 task 信息的 definition 再尝试 `.../{code}/view` 和 `.../{code}`
+- 兼容标准 DS JSON 与归一化 payload
+- 拉取后复用同一导入/重建流程
+
 ## 3. 查询接口
 
 ```http
@@ -173,7 +198,9 @@ GET /api/etl/lineage?table=ods_orders&direction=downstream&depth=10
 `FieldMappingParser` 解析 `INSERT ... SELECT`：
 
 - 目标表：`INSERT [OVERWRITE] TABLE` / `MERGE INTO` / `CREATE TABLE AS`
-- 目标列：`INSERT INTO t (col1, col2)` 显式列；没有时使用 SELECT alias 或 `COL_n`
+- 目标列：`INSERT INTO t (col1, col2)` 显式列
+- 目标表 schema：通过 `TargetSchemaResolver` 读取数据源元数据，按 ordinal 自动映射真实列名
+- 没有显式列且取不到 schema 时，使用 SELECT alias 或 `COL_n`
 - 源字段：`alias.column` + `FROM/JOIN ... alias`
 - 表达式：保留原始表达式，支持 `CAST`、函数、`*`
 
@@ -191,13 +218,18 @@ POST /api/etl/lineage/rebuild
 
 ## 5. OpenLineage / Marquez
 
-兼容 Marquez 的采集路径：
+兼容 Marquez 的采集与查询路径：
 
 ```http
 POST /api/v1/lineage
 POST /api/openlineage/events
 GET  /api/openlineage/events?jobName=
 GET  /api/openlineage/jobs
+GET  /api/v1/namespaces
+GET  /api/v1/namespaces/{namespace}/jobs
+GET  /api/v1/namespaces/{namespace}/jobs/{job}
+GET  /api/v1/namespaces/{namespace}/jobs/{job}/runs
+GET  /api/v1/namespaces/{namespace}/jobs/{job}/runs/{runId}
 ```
 
 支持标准 RunEvent：
@@ -212,8 +244,11 @@ GET  /api/openlineage/jobs
 - 写入 `openlineage_event`
 - 维护输入表 → 输出表的 `lineage_edge`（kind=OPENLINEAGE）
 - 维护字段级边（kind=OPENLINEAGE）
+- run 级 API 返回该 run 的 inputs/outputs、tableEdges、fieldEdges
 - 在 `/api/lineage/impact` 返回 `openLineageJobs`
 - 在 `/api/lineage/field-impact` 返回 OpenLineage 字段边
+
+Marquez 列表接口使用 `{items, totalCount}` 包装。
 
 ## 6. 与通用血缘合并
 
@@ -248,15 +283,17 @@ ODS 表
 
 ## 8. 当前边界
 
-- 当前是 DolphinScheduler **导出/API payload 导入**，未内置 DolphinScheduler 客户端自动拉取
 - 任务 SQL 解析是启发式，复杂存储过程/动态 SQL 需在 taskParams 中显式提供 source/target
+- 目标表 schema 映射依赖 DataAgent 数据源元数据；目标库未注册时回退 `COL_n`
 - workflow 依赖的 `conditionType/lag` 是元数据，不在 DataAgent 内调度
-- 尚未做 ETL 运行实例、SLA、补数/重跑血缘
+- DolphinScheduler 拉取目前是手动触发，尚未接定时同步
+- 运行实例当前来自 OpenLineage run；尚未接 DolphinScheduler task instance/SLA
+- OpenLineage job/run 查询已对齐主要路径，但未实现 Marquez 全部扩展字段
 
 ## 9. 后续
 
-- DolphinScheduler REST 拉取 + 定时同步
-- 运行实例血缘（instance/task instance）
+- DolphinScheduler 定时拉取与增量同步
+- DolphinScheduler task instance / 补数 / 重跑血缘
 - SLA/延迟传播分析
-- 与 Marquez 的完整 job/run API 对齐
-- 自动向前端推送 OpenLineage 事件
+- 补齐 Marquez job/run/dataset 全字段
+- 字段级 ETL 与目标 schema 的冲突检测

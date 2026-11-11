@@ -31,8 +31,10 @@
    - **查询缓存与并发保护**：短 TTL 结果缓存、全局/数据源级并发上限、429 背压
    - **表级/字段级血缘**：SQL 资产、Verified Query、语义实体与物理表/字段的影响分析
    - **ETL / DolphinScheduler 血缘**：ETL 任务、任务依赖、workflow 依赖、调度 cron、关键路径与端到端表级分析
-   - **字段级 ETL 映射**：INSERT...SELECT 源字段→目标字段、表达式、通配，自动维护 `lineage_field_edge`
-   - **OpenLineage / Marquez**：兼容 `POST /api/v1/lineage` 采集 RunEvent、columnLineage，自动合并到血缘图
+   - **字段级 ETL 映射**：INSERT...SELECT 源字段→目标字段、表达式、通配，自动读取目标表 schema 映射真实列并维护 `lineage_field_edge`
+   - **DolphinScheduler REST 拉取**：从 DS process definition/view/schedule REST API 拉取并复用导入/重建流程
+   - **OpenLineage / Marquez**：兼容 `POST /api/v1/lineage` 采集 RunEvent、columnLineage，提供 namespace/job/run 查询
+   - **运行实例血缘**：按 runId 返回 inputs/outputs、tableEdges、fieldEdges
    - **API Key 分权与租户隔离**：READ / EXECUTE / ADMIN，数据源 ACL，租户级数据源隔离
    - **PII 分类与脱敏**：邮箱/手机/身份证/银行卡/姓名/地址自动识别并在结果集脱敏
    - **韧性**：数据源熔断、瞬时错误重试一次、慢查询自动限流
@@ -55,7 +57,7 @@
    - 同一个 React 组件也构建为独立页面：`http://127.0.0.1:8080/studio/`
 
 3. **DSH 大模型 + MCP 工具**
-   - **44 个 `dataagent_*` MCP 工具**：列数据源、看表结构、只读执行、取计划、分析、对比、搜知识库、保存知识、标记解决、查历史、看统计，以及 SQL 资产、语义上下文、设计助手、语义沉淀、手动同步、运维概览、SRE 基准、已验证查询、长期记忆、候选审核、反馈闭环、审计、血缘、PII、ETL/DolphinScheduler、OpenLineage
+   - **47 个 `dataagent_*` MCP 工具**：列数据源、看表结构、只读执行、取计划、分析、对比、搜知识库、保存知识、标记解决、查历史、看统计，以及 SQL 资产、语义上下文、设计助手、语义沉淀、手动同步、运维概览、SRE 基准、已验证查询、长期记忆、候选审核、反馈闭环、审计、血缘、PII、ETL/DolphinScheduler、OpenLineage、Run 血缘
    - 面板生成包含 SQL、真实计划、静态发现和约束的 Prompt
    - 模型可继续调用工具验证，而不是凭空给建议
    - 验证后的结论可回写知识库与语义层
@@ -209,7 +211,7 @@ dataagent/
 │     └─ application.yml
 ├─ studio/                   React + esbuild 源码（独立页 + DSH Client）
 ├─ dsh-plugin/               DSH bundle（client.js 构建生成；patch/icon/locale 入库）
-├─ mcp-server/              零依赖 MCP stdio 工具桥（44 个工具）
+├─ mcp-server/              零依赖 MCP stdio 工具桥（47 个工具）
 ├─ docs/                     架构、API、语义层、DSH 集成
 ├─ scripts/                  构建、运行、冒烟
 ├─ docker-compose.yml
@@ -262,7 +264,7 @@ java -jar backend/target/dataagent-cloud-0.1.0.jar
 ## 开发与测试
 
 ```powershell
-# 后端单元 + 集成测试（40 个）
+# 后端单元 + 集成测试（41 个）
 cd backend
 mvn test
 
@@ -281,7 +283,7 @@ backend/src/main/resources/static/studio/app.js
 dsh-plugin/client.js
 ```
 
-测试覆盖：SQL 守卫、静态规则、计划解析（PostgreSQL/MySQL/H2）、真实 H2 查询、执行计划、知识沉淀、SQL 资产缓存、语义上下文/设计、Ontology 关系、Verified Query 验证、长期记忆强化/提升知识、对话候选抽取/审核、冲突检测、纠错反馈闭环、查询结果缓存、审计、表级/字段级血缘、ETL/DolphinScheduler 导入与端到端分析、字段映射、OpenLineage、PII 脱敏、API Key 角色/ACL/租户、审计导出、OpenAPI 契约、定期同步幂等、运维概览、SRE 基准执行、API Token。
+测试覆盖：SQL 守卫、静态规则、计划解析（PostgreSQL/MySQL/H2）、真实 H2 查询、执行计划、知识沉淀、SQL 资产缓存、语义上下文/设计、Ontology 关系、Verified Query 验证、长期记忆强化/提升知识、对话候选抽取/审核、冲突检测、纠错反馈闭环、查询结果缓存、审计、表级/字段级血缘、ETL/DolphinScheduler 导入与 REST 拉取、目标 schema 字段映射、OpenLineage job/run、PII 脱敏、API Key 角色/ACL/租户、审计导出、OpenAPI 契约、定期同步幂等、运维概览、SRE 基准执行、API Token。
 
 定期同步可用临时端口验证，不需要等 30 分钟：
 

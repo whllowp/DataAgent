@@ -1132,6 +1132,10 @@ GET /api/audit?actor=alice&action=SQL_EXECUTE&status=ERROR&limit=100&offset=0
 
 导入 DolphinScheduler process definitions、task relations、schedule 和 workflow dependencies。ADMIN only。
 
+### `POST /api/etl/sync/dolphinscheduler/pull?projectCode=123`
+
+从 DolphinScheduler REST 拉取并导入（配置 `dataagent.dolphinscheduler.*`）。
+
 ### `GET /api/etl/overview`
 
 workflow/task 数、已排程、依赖环、孤立任务。
@@ -1179,6 +1183,11 @@ POST /api/v1/lineage
 POST /api/openlineage/events
 GET  /api/openlineage/events?jobName=etl_job
 GET  /api/openlineage/jobs
+GET  /api/v1/namespaces
+GET  /api/v1/namespaces/{namespace}/jobs
+GET  /api/v1/namespaces/{namespace}/jobs/{job}
+GET  /api/v1/namespaces/{namespace}/jobs/{job}/runs
+GET  /api/v1/namespaces/{namespace}/jobs/{job}/runs/{runId}
 ```
 
 接受标准 OpenLineage RunEvent，自动维护：
@@ -1187,6 +1196,8 @@ GET  /api/openlineage/jobs
 - `lineage_field_edge`（columnLineage）
 - `/api/lineage/impact` 中的 `openLineageJobs`
 - `/api/lineage/field-impact` 中的 `fieldEdges`
+
+`.../runs/{runId}` 返回该运行实例的 tableEdges / fieldEdges，即运行实例级血缘。
 
 ### `GET /api/lineage/field-impact?table=&column=`
 

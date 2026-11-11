@@ -5,6 +5,7 @@ import com.dataagent.web.dto.OpenLineageDtos;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,7 +37,35 @@ public class OpenLineageController {
     }
 
     @GetMapping("/openlineage/jobs")
-    public List<OpenLineageDtos.JobView> jobs() {
-        return openLineage.jobs();
+    public List<OpenLineageDtos.JobView> jobs(@RequestParam(required = false) String namespace) {
+        return openLineage.jobs(namespace);
+    }
+
+    @GetMapping("/v1/namespaces")
+    public List<OpenLineageDtos.NamespaceView> namespaces() {
+        return openLineage.namespaces();
+    }
+
+    @GetMapping("/v1/namespaces/{namespace}/jobs")
+    public java.util.Map<String, Object> namespacedJobs(@PathVariable String namespace) {
+        List<OpenLineageDtos.JobView> jobs = openLineage.jobs(namespace);
+        return java.util.Map.of("items", jobs, "totalCount", jobs.size());
+    }
+
+    @GetMapping("/v1/namespaces/{namespace}/jobs/{job}")
+    public OpenLineageDtos.JobDetail job(@PathVariable String namespace, @PathVariable String job) {
+        return openLineage.job(namespace, job);
+    }
+
+    @GetMapping("/v1/namespaces/{namespace}/jobs/{job}/runs")
+    public java.util.Map<String, Object> runs(@PathVariable String namespace, @PathVariable String job) {
+        List<OpenLineageDtos.RunView> runs = openLineage.runs(namespace, job);
+        return java.util.Map.of("items", runs, "totalCount", runs.size());
+    }
+
+    @GetMapping("/v1/namespaces/{namespace}/jobs/{job}/runs/{runId}")
+    public OpenLineageDtos.RunView run(@PathVariable String namespace, @PathVariable String job,
+                                       @PathVariable String runId) {
+        return openLineage.run(namespace, job, runId);
     }
 }

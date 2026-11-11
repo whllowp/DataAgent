@@ -17,6 +17,7 @@ public class DataAgentProperties {
     private final Redis redis = new Redis();
     private final Resilience resilience = new Resilience();
     private final Audit audit = new Audit();
+    private final DolphinScheduler dolphinscheduler = new DolphinScheduler();
 
     public Security getSecurity() {
         return security;
@@ -56,6 +57,58 @@ public class DataAgentProperties {
 
     public Audit getAudit() {
         return audit;
+    }
+
+    public DolphinScheduler getDolphinscheduler() {
+        return dolphinscheduler;
+    }
+
+    public static class DolphinScheduler {
+        private boolean enabled = false;
+        private String baseUrl;
+        private String token;
+        private Long projectCode;
+        private String projectName;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getBaseUrl() {
+            return baseUrl;
+        }
+
+        public void setBaseUrl(String baseUrl) {
+            this.baseUrl = baseUrl;
+        }
+
+        public String getToken() {
+            return token;
+        }
+
+        public void setToken(String token) {
+            this.token = token;
+        }
+
+        public Long getProjectCode() {
+            return projectCode;
+        }
+
+        public void setProjectCode(Long projectCode) {
+            this.projectCode = projectCode;
+        }
+
+        public String getProjectName() {
+            return projectName;
+        }
+
+        public void setProjectName(String projectName) {
+            this.projectName = projectName;
+        }
     }
 
     public static class Audit {

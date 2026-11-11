@@ -136,10 +136,18 @@ public class OpenLineageService {
     }
 
     public List<OpenLineageDtos.JobView> jobs() {
+        return jobs(null);
+    }
+
+    public List<OpenLineageDtos.JobView> jobs(String namespace) {
         Map<String, long[]> counts = new LinkedHashMap<>();
         Map<String, Instant> last = new LinkedHashMap<>();
         for (OpenLineageEvent event : events.findTop100ByTenantIdOrderByCreatedAtDesc(
                 AuthContext.currentOrSystem().tenantId())) {
+            if (namespace != null && !namespace.isBlank()
+                    && !namespace.equalsIgnoreCase(event.getJobNamespace())) {
+                continue;
+            }
             String key = (event.getJobNamespace() == null ? "" : event.getJobNamespace()) + "|" + event.getJobName();
             counts.computeIfAbsent(key, ignored -> new long[1])[0]++;
             if (event.getEventTime() != null) {
@@ -155,6 +163,89 @@ public class OpenLineageService {
                 .sorted(Comparator.comparing(OpenLineageDtos.JobView::lastEventAt,
                         Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
+    }
+
+    public List<OpenLineageDtos.NamespaceView> namespaces() {
+        Map<String, Long> eventCounts = new LinkedHashMap<>();
+        Map<String, java.util.Set<String>> jobNames = new LinkedHashMap<>();
+        for (OpenLineageEvent event : events.findTop100ByTenantIdOrderByCreatedAtDesc(
+                AuthContext.currentOrSystem().tenantId())) {
+            String namespace = event.getJobNamespace() == null ? "" : event.getJobNamespace();
+            eventCounts.merge(namespace, 1L, Long::sum);
+            jobNames.computeIfAbsent(namespace, ignored -> new java.util.LinkedHashSet<>())
+                    .add(event.getJobName());
+        }
+        return eventCounts.entrySet().stream()
+                .map(entry -> new OpenLineageDtos.NamespaceView(entry.getKey(),
+                        jobNames.getOrDefault(entry.getKey(), java.util.Set.of()).size(), entry.getValue()))
+                .toList();
+    }
+
+    public OpenLineageDtos.JobDetail job(String namespace, String jobName) {
+        String tenant = AuthContext.currentOrSystem().tenantId();
+        List<OpenLineageEvent> rows = events.findTop100ByTenantIdAndJobNameOrderByCreatedAtDesc(tenant, jobName)
+                .stream().filter(event -> namespace == null || namespace.equalsIgnoreCase(event.getJobNamespace()))
+                .toList();
+        if (rows.isEmpty()) {
+            throw com.dataagent.web.ApiException.notFound("OpenLineage job 不存在: " + jobName);
+        }
+        Instant created = rows.stream().map(OpenLineageEvent::getCreatedAt).min(Comparator.naturalOrder())
+                .orElse(null);
+        Instant updated = rows.stream().map(OpenLineageEvent::getCreatedAt).max(Comparator.naturalOrder())
+                .orElse(null);
+        return new OpenLineageDtos.JobDetail(namespace, jobName, created, updated, runViews(rows));
+    }
+
+    public List<OpenLineageDtos.RunView> runs(String namespace, String jobName) {
+        String tenant = AuthContext.currentOrSystem().tenantId();
+        return runViews(events.findTop100ByTenantIdAndJobNameOrderByCreatedAtDesc(tenant, jobName)
+                .stream().filter(event -> namespace == null || namespace.equalsIgnoreCase(event.getJobNamespace()))
+                .toList());
+    }
+
+    public OpenLineageDtos.RunView run(String namespace, String jobName, String runId) {
+        List<OpenLineageEvent> rows = events.findByTenantIdAndJobNameAndRunIdOrderByCreatedAtDesc(
+                AuthContext.currentOrSystem().tenantId(), jobName, runId);
+        if (rows.isEmpty()) {
+            throw com.dataagent.web.ApiException.notFound("OpenLineage run 不存在: " + runId);
+        }
+        return runView(rows.get(0));
+    }
+
+    private List<OpenLineageDtos.RunView> runViews(List<OpenLineageEvent> rows) {
+        Map<String, OpenLineageEvent> latest = new LinkedHashMap<>();
+        for (OpenLineageEvent event : rows) {
+            if (event.getRunId() == null) {
+                continue;
+            }
+            OpenLineageEvent current = latest.get(event.getRunId());
+            if (current == null || (event.getCreatedAt() != null
+                    && current.getCreatedAt() != null
+                    && event.getCreatedAt().isAfter(current.getCreatedAt()))) {
+                latest.put(event.getRunId(), event);
+            }
+        }
+        return latest.values().stream().map(this::runView).toList();
+    }
+
+    private OpenLineageDtos.RunView runView(OpenLineageEvent event) {
+        String tenant = AuthContext.currentOrSystem().tenantId();
+        List<OpenLineageDtos.RunTableEdge> tableEdges = edges.findByTenantId(tenant).stream()
+                .filter(edge -> "OPENLINEAGE".equals(edge.getKind())
+                        && event.getRunId() != null && event.getRunId().equals(edge.getRunId())
+                        && event.getJobName() != null && event.getJobName().equals(edge.getJobName()))
+                .map(edge -> new OpenLineageDtos.RunTableEdge(edge.getSourceTable(), edge.getTargetTable()))
+                .distinct().toList();
+        List<OpenLineageDtos.RunFieldEdge> fieldRefs = fieldEdges.findByTenantId(tenant).stream()
+                .filter(edge -> "OPENLINEAGE".equals(edge.getKind())
+                        && event.getRunId() != null && event.getRunId().equals(edge.getRunId())
+                        && event.getJobName() != null && event.getJobName().equals(edge.getJobName()))
+                .map(edge -> new OpenLineageDtos.RunFieldEdge(edge.getSourceTable(), edge.getSourceColumn(),
+                        edge.getTargetTable(), edge.getTargetColumn(), edge.getExpression()))
+                .toList();
+        return new OpenLineageDtos.RunView(event.getRunId(), event.getEventType(), event.getEventTime(),
+                event.getInputsJson(), event.getOutputsJson(), event.getColumnLineageJson(),
+                tableEdges, fieldRefs);
     }
 
     public JsonNode toJson(String value) {

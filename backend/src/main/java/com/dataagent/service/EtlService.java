@@ -44,6 +44,7 @@ public class EtlService {
     private final EtlWorkflowDependencyRepository workflowDependencies;
     private final LineageService lineage;
     private final LineageMaintenanceService lineageMaintenance;
+    private final DolphinSchedulerClient dolphinScheduler;
     private final AuditService audit;
     private final ObjectMapper objectMapper;
 
@@ -51,13 +52,15 @@ public class EtlService {
                       EtlTaskDependencyRepository taskDependencies,
                       EtlWorkflowDependencyRepository workflowDependencies,
                       LineageService lineage, LineageMaintenanceService lineageMaintenance,
-                      AuditService audit, ObjectMapper objectMapper) {
+                      DolphinSchedulerClient dolphinScheduler, AuditService audit,
+                      ObjectMapper objectMapper) {
         this.workflows = workflows;
         this.tasks = tasks;
         this.taskDependencies = taskDependencies;
         this.workflowDependencies = workflowDependencies;
         this.lineage = lineage;
         this.lineageMaintenance = lineageMaintenance;
+        this.dolphinScheduler = dolphinScheduler;
         this.audit = audit;
         this.objectMapper = objectMapper;
     }
@@ -269,6 +272,11 @@ public class EtlService {
     }
 
     @Transactional
+    public EtlDtos.ImportResult pullDolphinScheduler(Long projectCode) {
+        return importDolphinScheduler(dolphinScheduler.pull(projectCode));
+    }
+
+    @Transactional
     public EtlDtos.ImportResult importDolphinScheduler(DolphinSchedulerDtos.ImportRequest request) {
         if (request == null || request.processDefinitions() == null || request.processDefinitions().isEmpty()) {
             throw ApiException.badRequest("processDefinitions 不能为空");
@@ -339,6 +347,14 @@ public class EtlService {
                     Map<String, Object> params = definitionTask.taskParams() == null
                             ? Map.of() : definitionTask.taskParams();
                     task.setSqlText(sqlText(params));
+                    String datasourceId = text(params.get("datasourceId"));
+                    if (datasourceId != null && !datasourceId.isBlank()) {
+                        try {
+                            task.setDatasourceId(UUID.fromString(datasourceId.trim()));
+                        } catch (Exception ignored) {
+                            warnings.add(workflow.getName() + " 忽略非法 datasourceId: " + datasourceId);
+                        }
+                    }
                     String target = text(params.get("targetTable"));
                     if (target == null) {
                         target = text(params.get("target_table"));

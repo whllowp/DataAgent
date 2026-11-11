@@ -11,4 +11,8 @@ public interface OpenLineageEventRepository extends JpaRepository<OpenLineageEve
     List<OpenLineageEvent> findTop100ByTenantIdOrderByCreatedAtDesc(String tenantId);
 
     List<OpenLineageEvent> findTop100ByTenantIdAndJobNameOrderByCreatedAtDesc(String tenantId, String jobName);
+
+    List<OpenLineageEvent> findByTenantIdAndJobNameAndRunIdOrderByCreatedAtDesc(String tenantId,
+                                                                               String jobName,
+                                                                               String runId);
 }
