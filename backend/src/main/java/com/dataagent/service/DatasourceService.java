@@ -81,6 +81,12 @@ public class DatasourceService {
         return datasource;
     }
 
+    @Transactional(readOnly = true)
+    public Datasource getRequiredUnscoped(UUID id) {
+        return repository.findById(id)
+                .orElseThrow(() -> ApiException.notFound("数据源不存在: " + id));
+    }
+
     private boolean visible(Principal principal, Datasource datasource) {
         if (!principal.tenantId().equals(datasource.getTenantId())) {
             return false;
@@ -178,6 +184,15 @@ public class DatasourceService {
 
     public DataSource dataSourceFor(UUID id) {
         Datasource datasource = getRequired(id);
+        return poolFor(id, datasource);
+    }
+
+    public DataSource dataSourceForUnscoped(UUID id) {
+        Datasource datasource = getRequiredUnscoped(id);
+        return poolFor(id, datasource);
+    }
+
+    private DataSource poolFor(UUID id, Datasource datasource) {
         return pools.computeIfAbsent(id, key -> {
             log.info("Creating JDBC pool for datasource {} ({})", datasource.getName(), id);
             return buildPool(datasource, 5);

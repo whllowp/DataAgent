@@ -119,10 +119,22 @@ public class MetadataService {
     }
 
     public MetadataDtos.TableDetail describeTable(UUID datasourceId, String schema, String table) {
-        Datasource datasource = datasources.getRequired(datasourceId);
+        return describeTable(datasourceId, schema, table, false);
+    }
+
+    public MetadataDtos.TableDetail describeTableInternal(UUID datasourceId, String schema, String table) {
+        return describeTable(datasourceId, schema, table, true);
+    }
+
+    private MetadataDtos.TableDetail describeTable(UUID datasourceId, String schema, String table,
+                                                   boolean internal) {
+        Datasource datasource = internal
+                ? datasources.getRequiredUnscoped(datasourceId) : datasources.getRequired(datasourceId);
         DbDialect dialect = DbDialect.from(datasource.getDialect());
         String schemaName = resolveSchema(schema, dialect);
-        try (Connection connection = datasources.dataSourceFor(datasourceId).getConnection()) {
+        try (Connection connection = (internal
+                ? datasources.dataSourceForUnscoped(datasourceId)
+                : datasources.dataSourceFor(datasourceId)).getConnection()) {
             DatabaseMetaData metaData = connection.getMetaData();
             String catalog = dialect == DbDialect.MYSQL
                     ? (schemaName != null ? schemaName : connection.getCatalog())

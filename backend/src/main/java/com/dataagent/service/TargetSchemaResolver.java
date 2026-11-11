@@ -28,7 +28,7 @@ public class TargetSchemaResolver {
         String key = datasourceId + "|" + table;
         return cache.computeIfAbsent(key, ignored -> {
             try {
-                MetadataDtos.TableDetail detail = metadata.describeTable(datasourceId, null, table);
+                MetadataDtos.TableDetail detail = metadata.describeTableInternal(datasourceId, null, table);
                 List<String> columns = new ArrayList<>();
                 detail.columns().stream()
                         .sorted(java.util.Comparator.comparingInt(MetadataDtos.ColumnInfo::ordinal))
