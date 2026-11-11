@@ -84,6 +84,8 @@ POST /api/rsi/runs
 
 ## 4. API
 
+![RSI 十代演进](images/rsi-evolution.png)
+
 ```http
 GET  /api/rsi/overview
 POST /api/rsi/runs

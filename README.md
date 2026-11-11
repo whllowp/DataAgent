@@ -36,6 +36,8 @@
    - **OpenLineage / Marquez**：兼容 `POST /api/v1/lineage` 采集 RunEvent、columnLineage，提供 namespace/job/run 查询
    - **运行实例血缘**：按 runId 返回 inputs/outputs、tableEdges、fieldEdges
    - **RSI 自我演进**：基于 Dream-RSI / Harmony Harness 的 harness genome、replay objective、Tchebycheff 选择与 Pareto，默认十代
+
+![RSI 十代演进](docs/images/rsi-evolution.png)
    - **API Key 分权与租户隔离**：READ / EXECUTE / ADMIN，数据源 ACL，租户级数据源隔离
    - **PII 分类与脱敏**：邮箱/手机/身份证/银行卡/姓名/地址自动识别并在结果集脱敏
    - **韧性**：数据源熔断、瞬时错误重试一次、慢查询自动限流
