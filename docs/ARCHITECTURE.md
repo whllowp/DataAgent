@@ -28,7 +28,7 @@ flowchart TB
     direction TB
     Panel["DataAgent SQL 面板<br/>Schema 树 / 编辑器 / 结果 / 历史 / 知识库"]
     DSH["DSH Agent + 大模型"]
-    MCP["MCP stdio bridge<br/>47 个 dataagent_* 工具"]
+    MCP["MCP stdio bridge<br/>51 个 dataagent_* 工具"]
     Panel -->|"HTTPS / REST"| Gateway
     DSH -->|"tool call"| MCP
     MCP -->|"HTTPS / REST"| Gateway
@@ -393,6 +393,16 @@ EXPLAIN <sql>
 - Marquez 查询 API：namespaces/jobs/job/runs/run
 - run 级返回 inputs/outputs/tableEdges/fieldEdges
 
+### 3.24 RSI 自我演进
+
+- `RsiService` 把 harness 配置编码为 genome
+- 基于 SRE benchmark 历史指标做 replay evaluation
+- 用 Tchebycheff-style 归一化多目标选择
+- discovery tree + parentId、Pareto front、十代演化
+- 最佳 genome 可通过 API/MCP/UI 查看，供后续动态组合
+
+详见 [RSI.md](RSI.md)。
+
 ## 4. 数据模型
 
 ```mermaid
@@ -515,6 +525,10 @@ V11 新增：
 
 - `lineage_edge` / `lineage_field_edge`：派生的表级/字段级血缘。
 - `openlineage_event`：标准 OpenLineage RunEvent 原始事件。
+
+V12 新增：
+
+- `rsi_run` / `rsi_generation` / `rsi_candidate` / `rsi_evaluation`：harness genome、replay 评估、代际和 Pareto 归档。
 
 ## 5. 关键流程
 
@@ -698,6 +712,10 @@ dsh-plugin/
 | `dataagent_openlineage_job` | OpenLineage job |
 | `dataagent_openlineage_run` | OpenLineage run |
 | `dataagent_etl_pull_dolphinscheduler` | DS REST 拉取 |
+| `dataagent_rsi_overview` | RSI 概览 |
+| `dataagent_rsi_start` | RSI 启动 |
+| `dataagent_rsi_status` | RSI 状态 |
+| `dataagent_rsi_pareto` | RSI Pareto |
 
 所有工具最终受云端的只读网关约束；模型不能通过 MCP 绕过 `SqlGuard`。
 

@@ -234,6 +234,12 @@ export function SqlStudio({ embedded = false }) {
   const [opsLoading, setOpsLoading] = React.useState(false);
   const [opsError, setOpsError] = React.useState('');
   const [opsRunningBenchmarks, setOpsRunningBenchmarks] = React.useState(false);
+  const [rsiOpen, setRsiOpen] = React.useState(false);
+  const [rsiOverview, setRsiOverview] = React.useState(null);
+  const [rsiDetail, setRsiDetail] = React.useState(null);
+  const [rsiLoading, setRsiLoading] = React.useState(false);
+  const [rsiRunning, setRsiRunning] = React.useState(false);
+  const [rsiError, setRsiError] = React.useState('');
   const [etlOpen, setEtlOpen] = React.useState(false);
   const [etlLoading, setEtlLoading] = React.useState(false);
   const [etlError, setEtlError] = React.useState('');
@@ -476,6 +482,35 @@ export function SqlStudio({ embedded = false }) {
       showToast(error.message, 'error');
     } finally {
       setOpsRunningBenchmarks(false);
+    }
+  }
+
+  async function loadRsi() {
+    setRsiLoading(true);
+    setRsiError('');
+    try {
+      setRsiOverview(await api.rsiOverview());
+    } catch (error) {
+      setRsiError(error.message);
+    } finally {
+      setRsiLoading(false);
+    }
+  }
+
+  async function startRsi() {
+    if (rsiRunning) return;
+    setRsiRunning(true);
+    setRsiError('');
+    try {
+      const detail = await api.rsiStart({ goal: 'Evolve DataAgent harness with replay', generations: 10, populationSize: 4 });
+      setRsiDetail(detail);
+      setRsiOverview(await api.rsiOverview());
+      showToast(`RSI 完成 10 代，最佳 ${detail.best?.name || 'candidate'}`, 'success');
+    } catch (error) {
+      setRsiError(error.message);
+      showToast(error.message, 'error');
+    } finally {
+      setRsiRunning(false);
     }
   }
 
@@ -1040,6 +1075,9 @@ export function SqlStudio({ embedded = false }) {
           <button className="da-icon-btn" onClick={() => setEtlOpen(true)} title="数据血缘 / ETL / DolphinScheduler">
             <Icon name="plan" size={15} />
           </button>
+          <button className="da-icon-btn" onClick={() => { setRsiOpen(true); if (!rsiOverview) loadRsi(); }} title="RSI：十代 harness 自我演进">
+            <Icon name="sparkles" size={15} />
+          </button>
           <button className="da-icon-btn" onClick={() => setOpsOpen(true)} title="运维可观测 / SRE 基准">
             <Icon name="chart" size={15} />
           </button>
@@ -1455,6 +1493,19 @@ export function SqlStudio({ embedded = false }) {
           onRefresh={loadOps}
           onRunBenchmarks={runAllBenchmarks}
           onClose={() => setOpsOpen(false)}
+        />
+      ) : null}
+
+      {rsiOpen ? (
+        <RsiModal
+          overview={rsiOverview}
+          detail={rsiDetail}
+          loading={rsiLoading}
+          running={rsiRunning}
+          error={rsiError}
+          onRefresh={loadRsi}
+          onStart={startRsi}
+          onClose={() => setRsiOpen(false)}
         />
       ) : null}
 
@@ -2525,6 +2576,86 @@ function OpsModal({ data, loading, error, runningBenchmarks, onRefresh, onRunBen
               <div>{row.errorMessage || '未知错误'} · {formatDuration(row.durationMs)} · {formatTime(row.createdAt)}</div>
             </div>
           )) : <div className="da-hint">没有失败查询记录。</div>}
+        </>
+      )}
+    </Modal>
+  );
+}
+
+function RsiModal({ overview, detail, loading, running, error, onRefresh, onStart, onClose }) {
+  const run = detail?.run;
+  const generations = detail?.generations || [];
+  const pareto = detail?.paretoFront || [];
+  return (
+    <Modal
+      title="RSI / 十代 Harness 自我演进"
+      onClose={onClose}
+      wide
+      footer={(
+        <>
+          <button className="da-btn ghost" onClick={onRefresh} disabled={loading || running}>
+            <Icon name={loading ? 'refresh' : 'chart'} size={11} className={loading ? 'da-spin' : ''} /> 刷新
+          </button>
+          <button className="da-btn primary" onClick={onStart} disabled={running}>
+            <Icon name={running ? 'refresh' : 'sparkles'} size={11} className={running ? 'da-spin' : ''} />
+            {running ? '演进中…' : '运行 10 代 RSI'}
+          </button>
+        </>
+      )}
+    >
+      {error ? <div className="da-error-box">{error}</div> : null}
+      {!overview ? (
+        <div className="da-tree-empty"><Icon name="refresh" size={14} className={loading ? 'da-spin' : ''} /> 正在读取 RSI 实验…</div>
+      ) : (
+        <>
+          <div className="da-ops-grid">
+            <div className="da-ops-card"><span>实验数</span><strong>{overview.runs}</strong><small>候选 {overview.candidates}</small></div>
+            <div className="da-ops-card"><span>最佳 quality</span><strong>{(overview.bestQuality ?? 0).toFixed(3)}</strong><small>replay objective</small></div>
+            <div className="da-ops-card"><span>最佳 cost</span><strong>{(overview.bestCost ?? 0).toFixed(1)}</strong><small>quality/cost Pareto</small></div>
+            <div className="da-ops-card"><span>当前代数</span><strong>{run ? run.generations : 0}</strong><small>{run ? run.status : '等待运行'}</small></div>
+          </div>
+
+          {detail && run ? (
+            <>
+              <div className="da-kb-section-label">最佳 genome · {detail.best?.name}</div>
+              <div className="da-ops-sync">
+                <div className="da-mono" style={{ fontSize: 12, overflowWrap: 'anywhere' }}>
+                  {JSON.stringify(detail.best?.genome || {}, null, 2)}
+                </div>
+                <div className="da-ops-sync-links">
+                  <span>Q {detail.best?.quality?.toFixed(2)}</span>
+                  <span>C {detail.best?.cost?.toFixed(1)}</span>
+                  <span>L {Math.round(detail.best?.latencyMs || 0)}ms</span>
+                </div>
+              </div>
+
+              <div className="da-kb-section-label">世代轨迹</div>
+              <div className="da-ops-table">
+                {generations.slice(-6).map((generation) => (
+                  <div className="da-ops-row" key={generation.generation}>
+                    <span>g{generation.generation}<small>best {generation.bestScore.toFixed(3)}</small></span>
+                    <span>{generation.population?.[0]?.name || ''}</span>
+                    <span>Q {(generation.population?.[0]?.quality ?? 0).toFixed(2)}</span>
+                    <span>C {(generation.population?.[0]?.cost ?? 0).toFixed(1)}</span>
+                    <span>n {generation.population?.length || 0}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="da-kb-section-label">Pareto front · {pareto.length}</div>
+              {pareto.length ? pareto.slice(0, 6).map((candidate) => (
+                <div className="da-ops-row" key={candidate.id}>
+                  <span>{candidate.name}<small>g{candidate.generation}</small></span>
+                  <span>Q {candidate.quality.toFixed(2)}</span>
+                  <span>C {candidate.cost.toFixed(1)}</span>
+                  <span>L {Math.round(candidate.latencyMs)}ms</span>
+                  <span>{candidate.passRate.toFixed(2)}</span>
+                </div>
+              )) : <div className="da-hint">运行一次 RSI 后显示 Pareto 前沿。</div>}
+            </>
+          ) : (
+            <div className="da-hint">点击“运行 10 代 RSI”，系统会基于 SRE benchmark replay 生成 discovery tree、Pareto front 和最佳 harness。</div>
+          )}
         </>
       )}
     </Modal>

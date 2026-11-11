@@ -133,6 +133,10 @@ export function createApi({ baseUrl, token }) {
     etlLineage: (table, direction = 'downstream', depth = 10) =>
       request(`/api/etl/lineage${encodeQuery({ table, direction, depth })}`),
     opsOverview: () => request('/api/ops/overview'),
+    rsiOverview: () => request('/api/rsi/overview'),
+    rsiStart: (body) => request('/api/rsi/runs', { method: 'POST', body }),
+    rsiRun: (id) => request(`/api/rsi/runs/${id}`),
+    rsiPareto: (id) => request(`/api/rsi/runs/${id}/pareto`),
     benchmarks: () => request('/api/benchmarks'),
     runBenchmark: (id) => request(`/api/benchmarks/${id}/run`, { method: 'POST' }),
     runAllBenchmarks: () => request('/api/benchmarks/run', { method: 'POST' }),

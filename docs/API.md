@@ -1207,7 +1207,31 @@ GET  /api/v1/namespaces/{namespace}/jobs/{job}/runs/{runId}
 - Verified Query
 - `fieldEdges`：ETL/OpenLineage 字段映射
 
-## 17. curl 速查
+## 17. RSI 自我演进
+
+```http
+GET  /api/rsi/overview
+POST /api/rsi/runs
+GET  /api/rsi/runs/{id}
+GET  /api/rsi/runs/{id}/pareto
+```
+
+启动十代：
+
+```json
+{"goal":"evolve DataAgent harness with replay","generations":10,"populationSize":4}
+```
+
+返回包含：
+
+- run 状态与代数
+- 每代 population 和 bestScore
+- 最佳 harness genome
+- Pareto front
+
+详见 [RSI.md](RSI.md)。
+
+## 18. curl 速查
 
 ```bash
 TOKEN=dataagent-dev-token

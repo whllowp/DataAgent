@@ -26,6 +26,7 @@ import com.dataagent.service.MemoryCandidateService;
 import com.dataagent.service.MemoryService;
 import com.dataagent.service.PiiService;
 import com.dataagent.service.QueryResultCache;
+import com.dataagent.service.RsiService;
 import com.dataagent.service.SemanticService;
 import com.dataagent.service.SemanticSyncService;
 import com.dataagent.service.SqlAssetService;
@@ -42,6 +43,7 @@ import com.dataagent.web.dto.MemoryCandidateDtos;
 import com.dataagent.web.dto.MemoryDtos;
 import com.dataagent.web.dto.OpenLineageDtos;
 import com.dataagent.web.dto.OptimizeDtos;
+import com.dataagent.web.dto.RsiDtos;
 import com.dataagent.web.dto.OpsDtos;
 import com.dataagent.web.dto.SemanticDtos;
 import com.dataagent.web.dto.SqlAssetDtos;
@@ -129,6 +131,8 @@ class DataAgentIntegrationTest {
     private LineageMaintenanceService lineageMaintenance;
     @Autowired
     private OpenLineageService openLineage;
+    @Autowired
+    private RsiService rsi;
     @Autowired
     private MetadataService metadata;
     @Autowired
@@ -579,6 +583,20 @@ class DataAgentIntegrationTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    void evolvesRsiHarnessForTenGenerations() {
+        RsiDtos.RunDetail detail = rsi.start(new RsiDtos.StartRequest(
+                "evolve DataAgent harness with replay", 10, 4));
+        assertEquals("COMPLETED", detail.run().status());
+        assertEquals(10, detail.run().generations());
+        assertEquals(11, detail.generations().size());
+        assertNotNull(detail.best());
+        assertTrue(detail.best().quality() > 0);
+        assertFalse(detail.paretoFront().isEmpty());
+        assertEquals(10, detail.generations().stream()
+                .mapToInt(RsiDtos.GenerationView::generation).max().orElse(-1));
     }
 
     @Test

@@ -857,6 +857,51 @@ const tools = [
       return api(`/api/etl/sync/dolphinscheduler/pull?${params.toString()}`, { method: 'POST' });
     },
   },
+  {
+    name: 'dataagent_rsi_overview',
+    description: '查看 RSI 实验规模、最佳 quality/cost 与最近 run。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    handler: () => api('/api/rsi/overview'),
+  },
+  {
+    name: 'dataagent_rsi_start',
+    description: '启动 RSI harness 演进：默认 10 代、种群 4，使用 replay benchmark 评分。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        goal: { type: 'string' },
+        generations: { type: 'integer', minimum: 1, maximum: 50 },
+        populationSize: { type: 'integer', minimum: 2, maximum: 8 },
+      },
+      additionalProperties: false,
+    },
+    handler: (args) => api('/api/rsi/runs', { method: 'POST', body: args }),
+  },
+  {
+    name: 'dataagent_rsi_status',
+    description: '查看单次 RSI run 的世代、候选、最佳 harness 与 Pareto front。',
+    inputSchema: {
+      type: 'object',
+      properties: { runId: { type: 'string' } },
+      required: ['runId'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => api(`/api/rsi/runs/${encodeURIComponent(args.runId)}`),
+  },
+  {
+    name: 'dataagent_rsi_pareto',
+    description: '查看 RSI run 的 Pareto 候选前沿。',
+    inputSchema: {
+      type: 'object',
+      properties: { runId: { type: 'string' } },
+      required: ['runId'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => api(`/api/rsi/runs/${encodeURIComponent(args.runId)}/pareto`),
+  },
 ];
 
 async function firstDatasourceId() {
