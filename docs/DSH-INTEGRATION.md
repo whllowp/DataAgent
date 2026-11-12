@@ -332,6 +332,20 @@ node -e "global.window={__ModuleLoader__:{load({id,factory}){const m=factory(req
 
 `dsh-plugin/index.js` 当前为空。若要在 Host 侧注册工具/系统提示，可参考 DSH 的 Cordis 插件文档；浏览器面板和 MCP 已覆盖 MVP 需求。
 
+## 本地可观测插件 / 桌面小宠物
+
+`studio/src/observability.js` 在浏览器侧注入一个浮动“小析”：
+
+- 采集本地 window error / unhandled rejection / DataAgent `/api/` 请求
+- 轮询云端 health、ops、audit、RSI
+- 规则化根因候选：云端不可达、延迟、Token/ACL、查询失败、SQL 守卫、DSH 客户端异常
+- 点击宠物打开端云面板；支持复制诊断 JSON
+- 不落盘，不读取 SQL 内容；卸载时恢复 `window.fetch`
+
+详见 [DSH-OBSERVABILITY.md](DSH-OBSERVABILITY.md)。
+
+> DSH Web GUI 可能是 `http://127.0.0.1:<port>` 或 `dsh-app://*`；后端默认 CORS 已允许 loopback 任意端口，生产应收紧。
+
 ## 9. 限制
 
 - 不做 DataGrip 的自动补全、语法高亮、ER 图、事务编辑、SSH 隧道。

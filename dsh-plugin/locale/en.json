@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "DataAgent SQL",
-    "description": "Cloud read-only SQL workspace with schema browsing, execution plans, history, team knowledge, and DSH optimization tools."
+    "description": "Cloud and edge observability workspace: local edge events, cloud RCA, team knowledge, DSH optimization tools, and a desktop pet."
   }
 }

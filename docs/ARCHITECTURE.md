@@ -403,6 +403,16 @@ EXPLAIN <sql>
 
 详见 [RSI.md](RSI.md)。
 
+### 3.25 DSH 端云可观测 / 桌面小宠物
+
+- `studio/src/observability.js` 作为 DSH 浏览器插件注入
+- 边缘采集 `error`、`unhandledrejection`、`/api/` 请求状态和耗时
+- 云端汇总 health / ops / audit / RSI
+- 规则 RCA：不可达、延迟、Token/ACL、查询失败、SQL 守卫、本地客户端错误
+- 浮动小析：颜色随状态变化、可拖动、打开面板、复制诊断 JSON
+
+详见 [DSH-OBSERVABILITY.md](DSH-OBSERVABILITY.md)。
+
 ## 4. 数据模型
 
 ```mermaid

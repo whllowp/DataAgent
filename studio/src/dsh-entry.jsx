@@ -1,6 +1,7 @@
 import React from 'react';
 import { SqlStudio } from './SqlStudio.jsx';
 import { DataAgentIcon } from './icons.jsx';
+import { installDataAgentObservability } from './observability.js';
 
 const NS = 'dataagent';
 const PANEL_ID = 'dataagent';
@@ -11,7 +12,7 @@ export function apply(ctx) {
   ctx.effect(() => ctx.locale.register(NS, {
     zh: {
       panel: 'DataAgent SQL',
-      description: '云端只读 SQL 工作台、执行历史、团队知识库与 DSH 优化入口。',
+      description: 'DataAgent SQL 工作台、端云可观测与桌面小宠物：本地边缘 + 云端根因定位。',
     },
     en: {
       panel: 'DataAgent SQL',
@@ -21,6 +22,8 @@ export function apply(ctx) {
 
   const t = ctx.locale.bind(NS);
   const Panel = () => <SqlStudio embedded />;
+
+  installDataAgentObservability(ctx);
 
   ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main',

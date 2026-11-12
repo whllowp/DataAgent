@@ -36,6 +36,7 @@
    - **OpenLineage / Marquez**：兼容 `POST /api/v1/lineage` 采集 RunEvent、columnLineage，提供 namespace/job/run 查询
    - **运行实例血缘**：按 runId 返回 inputs/outputs、tableEdges、fieldEdges
    - **RSI 自我演进**：基于 Dream-RSI / Harmony Harness 的 harness genome、replay objective、Tchebycheff 选择与 Pareto，默认十代
+   - **DSH 端云可观测 + 桌面小宠物**：本地边缘错误/API 采集、云端 health/查询/审计/RSI 合并、根因规则、浮动小析和诊断复制
 
 ![RSI 十代演进](docs/images/rsi-evolution.png)
    - **API Key 分权与租户隔离**：READ / EXECUTE / ADMIN，数据源 ACL，租户级数据源隔离
@@ -116,7 +117,7 @@ flowchart LR
   SEM --> SYNC
 ```
 
-更完整的设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，语义层见 [docs/SEMANTIC.md](docs/SEMANTIC.md)，长期记忆见 [docs/MEMORY.md](docs/MEMORY.md)，治理/缓存/血缘见 [docs/GOVERNANCE.md](docs/GOVERNANCE.md)，ETL/DolphinScheduler 见 [docs/ETL-LINEAGE.md](docs/ETL-LINEAGE.md)，安全/租户/PII 见 [docs/SECURITY.md](docs/SECURITY.md)，韧性/Redis 见 [docs/RESILIENCE.md](docs/RESILIENCE.md)，RSI 见 [docs/RSI.md](docs/RSI.md)，业界对标见 [docs/INDUSTRY-BENCHMARK.md](docs/INDUSTRY-BENCHMARK.md)，接口见 [docs/API.md](docs/API.md)，DSH 集成见 [docs/DSH-INTEGRATION.md](docs/DSH-INTEGRATION.md)。
+更完整的设计见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，语义层见 [docs/SEMANTIC.md](docs/SEMANTIC.md)，长期记忆见 [docs/MEMORY.md](docs/MEMORY.md)，治理/缓存/血缘见 [docs/GOVERNANCE.md](docs/GOVERNANCE.md)，ETL/DolphinScheduler 见 [docs/ETL-LINEAGE.md](docs/ETL-LINEAGE.md)，安全/租户/PII 见 [docs/SECURITY.md](docs/SECURITY.md)，韧性/Redis 见 [docs/RESILIENCE.md](docs/RESILIENCE.md)，RSI 见 [docs/RSI.md](docs/RSI.md)，DSH 端云可观测/小宠物见 [docs/DSH-OBSERVABILITY.md](docs/DSH-OBSERVABILITY.md)，业界对标见 [docs/INDUSTRY-BENCHMARK.md](docs/INDUSTRY-BENCHMARK.md)，接口见 [docs/API.md](docs/API.md)，DSH 集成见 [docs/DSH-INTEGRATION.md](docs/DSH-INTEGRATION.md)。
 
 > **语义层演示口径**：内置 GMV、客单价、订单量、有效订单、渠道、大促等定义是示例，`owner=demo`、`status=DRAFT`；正式使用前请由业务/数据负责人替换并改为 `ACTIVE`。
 

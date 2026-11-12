@@ -3,7 +3,9 @@
 - insert:
     - id: dataagent-sql-studio
       name: '@local/dataagent-dsh'
-      config: {}
+      config:
+        observability: true
+        desktopPet: true
     - id: dataagent-mcp
       name: '@deepseek-ai/dsh-mcp-client'
       config:

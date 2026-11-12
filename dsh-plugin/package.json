@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "DataAgent SQL Studio for DeepSeek Harness: cloud SQL gateway, execution history, knowledge base, and MCP optimization tools.",
+  "description": "DataAgent SQL Studio + local cloud/edge observability and a desktop pet for DeepSeek Harness.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
