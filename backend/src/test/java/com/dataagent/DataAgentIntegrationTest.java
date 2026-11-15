@@ -2,6 +2,7 @@ package com.dataagent;
 
 import com.dataagent.bootstrap.DemoDataInitializer;
 import com.dataagent.domain.Datasource;
+import com.dataagent.domain.AgentMemory;
 import com.dataagent.domain.QueryExecution;
 import com.dataagent.repository.DatasourceRepository;
 import com.dataagent.repository.KnowledgeEntryRepository;
@@ -23,7 +24,9 @@ import com.dataagent.service.AuditService;
 import com.dataagent.service.FeedbackService;
 import com.dataagent.service.LineageService;
 import com.dataagent.service.MemoryCandidateService;
+import com.dataagent.service.MemoryDreamService;
 import com.dataagent.service.MemoryService;
+import com.dataagent.service.OntologyService;
 import com.dataagent.service.PiiService;
 import com.dataagent.service.QueryResultCache;
 import com.dataagent.service.RsiService;
@@ -113,6 +116,12 @@ class DataAgentIntegrationTest {
     private VerifiedQueryService verifiedQueries;
     @Autowired
     private MemoryService memories;
+    @Autowired
+    private MemoryDreamService memoryDream;
+    @Autowired
+    private OntologyService ontology;
+    @Autowired
+    private com.dataagent.repository.AgentMemoryRepository memoryRepository;
     @Autowired
     private MemoryCandidateService memoryCandidates;
     @Autowired
@@ -597,6 +606,58 @@ class DataAgentIntegrationTest {
         assertFalse(detail.paretoFront().isEmpty());
         assertEquals(10, detail.generations().stream()
                 .mapToInt(RsiDtos.GenerationView::generation).max().orElse(-1));
+    }
+
+    @Test
+    void dreamsMemoryIntoWikiAndInjectedContext() {
+        String key = "dream.test." + Math.abs(System.nanoTime());
+        memoryRepository.save(testMemory(key, "订单与客户关联使用 customer_id = id，跨表聚合前先按客户去重。", 80));
+        memoryRepository.save(testMemory(key, "订单与客户关联使用 customer_id = id，跨表聚合前先按客户去重。", 70));
+
+        MemoryDtos.DreamRunView run = memoryDream.dream("TEST");
+        assertEquals("COMPLETED", run.status());
+        assertTrue(run.wikiPages() > 0);
+        assertTrue(run.wikiLinks() > 0);
+        assertFalse(memoryDream.wiki().isEmpty());
+        MemoryDtos.MemoryContext context = memoryDream.context(key, "test-session", null, null, null);
+        assertFalse(context.injected().isEmpty());
+        assertTrue(context.tokenEstimate() <= context.tokenBudget());
+        assertFalse(memoryDream.overview().pages().isEmpty());
+    }
+
+    @Test
+    void compilesOntologyAndGroundsAnswerabilityAndLineage() {
+        var run = ontology.compile(new SemanticDtos.CompileRequest(demo.getId(), null, "FULL"));
+        assertEquals("COMPLETED", run.status());
+        assertTrue(run.createdTerms() > 0);
+        assertTrue(run.mappedColumns() > 0);
+        assertFalse(ontology.columnsForTable("CUSTOMERS").isEmpty());
+        var answer = ontology.answerable("CUSTOMERS");
+        assertFalse(answer.terms().isEmpty());
+        assertFalse(ontology.graph(null).nodes().isEmpty());
+        var impact = ontology.impact("CUSTOMERS", null);
+        assertFalse(impact.columns().isEmpty());
+        assertFalse(lineage.impact("CUSTOMERS").semanticTerms().isEmpty());
+        var source = semantic.listTerms("SALES_ORDERS").stream().findFirst().orElseThrow();
+        var target = semantic.listTerms("CUSTOMERS").stream().findFirst().orElseThrow();
+        assertFalse(ontology.joinPath(source.id(), target.id()).isEmpty());
+    }
+
+    private AgentMemory testMemory(String key, String content, int importance) {
+        AgentMemory memory = new AgentMemory();
+        memory.setTenantId("default");
+        memory.setScope("GLOBAL");
+        memory.setKind("DECISION");
+        memory.setMemoryKey(key);
+        memory.setContent(content);
+        memory.setSource("TEST");
+        memory.setConfidence(80);
+        memory.setImportance(importance);
+        memory.setSalience(importance);
+        memory.setStatus("ACTIVE");
+        memory.setTags("test,dreaming");
+        memory.setOwner("test");
+        return memoryRepository.save(memory);
     }
 
     @Test

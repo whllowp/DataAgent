@@ -3,7 +3,7 @@
 DataAgent 不 fork DSH，而是交付一个 **bundle**：
 
 - `dsh.client`：向 DSH Web UI 注册 `DataAgent SQL` 主面板和侧边栏入口；
-- `dsh.bundle.patch`：同时插入一个 `@deepseek-ai/dsh-mcp-client` 行，把 51 个工具挂到当前 profile。
+- `dsh.bundle.patch`：同时插入一个 `@deepseek-ai/dsh-mcp-client` 行，把 59 个工具挂到当前 profile。
 
 这样 DSH 升级不会覆盖你的改动，卸载也只需移除 bundle。
 
@@ -162,7 +162,7 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
 ) -join "`n" | node E:\DataAgent\dataagent\mcp-server\server.js
 ```
 
-应看到 `initialize` 与 51 个工具的 JSON 响应。工具调用示例：
+应看到 `initialize` 与 59 个工具的 JSON 响应。工具调用示例：
 
 ```json
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"dataagent_explain_sql","arguments":{"sql":"SELECT * FROM customers LIMIT 5"}}}
@@ -209,6 +209,14 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
 | `dataagent_rsi_start` | 启动 RSI 十代演进 |
 | `dataagent_rsi_status` | RSI run 状态 |
 | `dataagent_rsi_pareto` | RSI Pareto 前沿 |
+| `dataagent_memory_dream` | 记忆 dreaming |
+| `dataagent_memory_context` | 分层记忆上下文 |
+| `dataagent_memory_wiki` | 记忆 wiki |
+| `dataagent_ontology_compile` | ontology 编译 |
+| `dataagent_ontology_answerable` | 可回答性 |
+| `dataagent_ontology_join_path` | join 路径 |
+| `dataagent_ontology_impact` | 语义影响面 |
+| `dataagent_ontology_graph` | ontology 图 |
 | `dataagent_ops_overview` | 查询运维可观测概览 |
 | `dataagent_run_sre_benchmarks` | 运行 SRE 基准用例 |
 

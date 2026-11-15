@@ -16,6 +16,7 @@ import com.dataagent.repository.SqlAssetRepository;
 import com.dataagent.repository.VerifiedQueryRepository;
 import com.dataagent.security.AuthContext;
 import com.dataagent.web.dto.LineageDtos;
+import com.dataagent.web.dto.SemanticDtos;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,12 +57,14 @@ public class LineageService {
     private final EtlTaskRepository etlTasks;
     private final LineageEdgeRepository lineageEdges;
     private final LineageFieldEdgeRepository lineageFieldEdges;
+    private final OntologyService ontology;
 
     public LineageService(SqlAssetRepository assets, VerifiedQueryRepository verifiedQueries,
                           SemanticEntityRepository entities, PiiService pii,
                           EtlWorkflowRepository etlWorkflows, EtlTaskRepository etlTasks,
                           LineageEdgeRepository lineageEdges,
-                          LineageFieldEdgeRepository lineageFieldEdges) {
+                          LineageFieldEdgeRepository lineageFieldEdges,
+                          OntologyService ontology) {
         this.assets = assets;
         this.verifiedQueries = verifiedQueries;
         this.entities = entities;
@@ -70,6 +73,7 @@ public class LineageService {
         this.etlTasks = etlTasks;
         this.lineageEdges = lineageEdges;
         this.lineageFieldEdges = lineageFieldEdges;
+        this.ontology = ontology;
     }
 
     @Transactional(readOnly = true)
@@ -151,8 +155,10 @@ public class LineageService {
                 .map(edge -> new LineageDtos.OpenLineageRef(edge.getJobName(), edge.getRunId(),
                         edge.getSourceTable(), edge.getTargetTable()))
                 .toList();
+        SemanticDtos.OntologyImpact ontologyImpact = ontology.impact(normalized, null);
         return new LineageDtos.Impact(normalized, assetRefs, verifiedRefs, entityRefs, etlRefs,
-                openLineageRefs);
+                openLineageRefs, ontologyImpact.terms(), ontologyImpact.columns(),
+                ontologyImpact.sqlAttributes());
     }
 
     private List<EtlTask> tenantEtlTasks() {
@@ -263,8 +269,10 @@ public class LineageService {
                         edge.getTargetTable(), edge.getTargetColumn(), edge.getExpression(),
                         edge.getKind(), edge.getJobName()))
                 .toList();
+        SemanticDtos.OntologyImpact ontologyImpact = ontology.impact(normalizedTable, normalizedColumn);
         return new LineageDtos.FieldImpact(normalizedTable, normalizedColumn,
-                pii.classify(normalizedColumn, normalizedColumn), assetRefs, verifiedRefs, fieldEdges);
+                pii.classify(normalizedColumn, normalizedColumn), assetRefs, verifiedRefs, fieldEdges,
+                ontologyImpact.terms(), ontologyImpact.columns(), ontologyImpact.sqlAttributes());
     }
 
     public Map<String, String> tableAliases(String sql) {

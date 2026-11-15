@@ -902,6 +902,125 @@ const tools = [
     annotations: { readOnlyHint: true },
     handler: (args) => api(`/api/rsi/runs/${encodeURIComponent(args.runId)}/pareto`),
   },
+  {
+    name: 'dataagent_memory_dream',
+    description: '运行记忆 dreaming：合并/纠正记忆、生成 wiki 与受限注入上下文。',
+    inputSchema: {
+      type: 'object',
+      properties: { trigger: { type: 'string' } },
+      additionalProperties: false,
+    },
+    handler: (args) => {
+      const params = new URLSearchParams();
+      if (args.trigger) params.set('trigger', args.trigger);
+      return api(`/api/memory/dream?${params.toString()}`, { method: 'POST' });
+    },
+  },
+  {
+    name: 'dataagent_memory_context',
+    description: '读取分层记忆上下文：注入笔记、wiki 表示、相关 transcript。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        sessionId: { type: 'string' },
+        domain: { type: 'string' },
+        datasource: { type: 'string' },
+        user: { type: 'string' },
+      },
+      additionalProperties: false,
+    },
+    handler: (args) => {
+      const params = new URLSearchParams();
+      if (args.query) params.set('q', args.query);
+      if (args.sessionId) params.set('sessionId', args.sessionId);
+      if (args.domain) params.set('domain', args.domain);
+      if (args.datasource) params.set('datasource', args.datasource);
+      if (args.user) params.set('user', args.user);
+      return api(`/api/memory/context?${params.toString()}`);
+    },
+  },
+  {
+    name: 'dataagent_memory_wiki',
+    description: '查看记忆 wiki 页面与链接索引。',
+    inputSchema: {
+      type: 'object',
+      properties: { slug: { type: 'string' } },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => args.slug
+      ? api(`/api/memory/wiki/${encodeURIComponent(args.slug)}`)
+      : api('/api/memory/wiki'),
+  },
+  {
+    name: 'dataagent_ontology_compile',
+    description: '从数据源元数据编译语义 ontology：terms、字段映射、SQL attributes、joins。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        datasourceId: { type: 'string' },
+        schema: { type: 'string' },
+        mode: { type: 'string' },
+      },
+      required: ['datasourceId'],
+      additionalProperties: false,
+    },
+    handler: (args) => api('/api/semantic/compile', { method: 'POST', body: args }),
+  },
+  {
+    name: 'dataagent_ontology_answerable',
+    description: '在生成 SQL 前检查 ontology 是否覆盖问题，返回 coverage、缺失概念、字段与 join。',
+    inputSchema: {
+      type: 'object',
+      properties: { question: { type: 'string' } },
+      required: ['question'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => api(`/api/semantic/ontology/answerable?q=${encodeURIComponent(args.question)}`),
+  },
+  {
+    name: 'dataagent_ontology_join_path',
+    description: '查找两个语义 term 之间的 join 路径。',
+    inputSchema: {
+      type: 'object',
+      properties: { from: { type: 'string' }, to: { type: 'string' } },
+      required: ['from', 'to'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => api(`/api/semantic/ontology/joins/path?from=${encodeURIComponent(args.from)}&to=${encodeURIComponent(args.to)}`),
+  },
+  {
+    name: 'dataagent_ontology_impact',
+    description: '按物理表/字段查看 ontology 影响面：terms、字段映射、SQL attributes、joins。',
+    inputSchema: {
+      type: 'object',
+      properties: { table: { type: 'string' }, column: { type: 'string' } },
+      required: ['table'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => {
+      const params = new URLSearchParams({ table: args.table });
+      if (args.column) params.set('column', args.column);
+      return api(`/api/semantic/ontology/impact?${params.toString()}`);
+    },
+  },
+  {
+    name: 'dataagent_ontology_graph',
+    description: '查看 ontology 图：terms、columns、SQL attributes 和 join 边。',
+    inputSchema: {
+      type: 'object',
+      properties: { termId: { type: 'string' } },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => args.termId
+      ? api(`/api/semantic/ontology/graph?termId=${encodeURIComponent(args.termId)}`)
+      : api('/api/semantic/ontology/graph/full'),
+  },
 ];
 
 async function firstDatasourceId() {

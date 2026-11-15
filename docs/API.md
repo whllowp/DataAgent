@@ -1231,7 +1231,40 @@ GET  /api/rsi/runs/{id}/pareto
 
 详见 [RSI.md](RSI.md)。
 
-## 18. curl 速查
+## 18. 记忆分层 / Dreaming
+
+```http
+POST /api/memory/dream?trigger=MANUAL
+GET  /api/memory/dreams
+GET  /api/memory/wiki
+GET  /api/memory/wiki/{slug}
+GET  /api/memory/context?q=&sessionId=&domain=&datasource=&user=
+POST /api/memory/{id}/validate
+```
+
+`dream` 会合并/替代冲突 note、用 transcript 校正、重算 salience、生成 wiki/index 和受限注入快照。详见 [MEMORY-HIERARCHY.md](MEMORY-HIERARCHY.md)。
+
+## 19. Auto-Ontology 语义层
+
+```http
+POST /api/semantic/compile
+GET  /api/semantic/compile/runs
+GET  /api/semantic/compile/last
+GET  /api/semantic/ontology/answerable?q=
+GET  /api/semantic/ontology/columns?termId=|table=
+GET  /api/semantic/ontology/sql-attributes?q=
+GET  /api/semantic/ontology/joins/path?from=&to=
+GET  /api/semantic/ontology/graph
+GET  /api/semantic/ontology/impact?table=&column=
+POST /api/semantic/ontology/joins
+POST /api/semantic/ontology/columns/{id}/certify
+POST /api/semantic/ontology/attributes/{id}/certify
+POST /api/semantic/ontology/joins/{id}/certify
+```
+
+`/api/lineage/impact` 和 `/api/lineage/field-impact` 额外返回 `semanticTerms`、`termColumns`、`sqlAttributes`。详见 [ONTOLOGY.md](ONTOLOGY.md)。
+
+## 20. curl 速查
 
 ```bash
 TOKEN=dataagent-dev-token

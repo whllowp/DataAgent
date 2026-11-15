@@ -1,5 +1,6 @@
 package com.dataagent.web;
 
+import com.dataagent.service.MemoryDreamService;
 import com.dataagent.service.MemoryService;
 import com.dataagent.web.dto.MemoryDtos;
 import jakarta.validation.Valid;
@@ -23,9 +24,11 @@ import java.util.UUID;
 public class MemoryController {
 
     private final MemoryService memories;
+    private final MemoryDreamService dream;
 
-    public MemoryController(MemoryService memories) {
+    public MemoryController(MemoryService memories, MemoryDreamService dream) {
         this.memories = memories;
+        this.dream = dream;
     }
 
     @GetMapping
@@ -84,5 +87,41 @@ public class MemoryController {
     @PostMapping("/archive-expired")
     public MemoryDtos.ArchiveResult archiveExpired() {
         return memories.archiveExpired();
+    }
+
+    @PostMapping("/{id}/validate")
+    public MemoryDtos.MemoryView validate(@PathVariable UUID id) {
+        return memories.validate(id);
+    }
+
+    @PostMapping("/dream")
+    @ResponseStatus(HttpStatus.CREATED)
+    public MemoryDtos.DreamRunView dream(@RequestParam(required = false, defaultValue = "MANUAL") String trigger) {
+        return dream.dream(trigger);
+    }
+
+    @GetMapping("/dreams")
+    public MemoryDtos.DreamOverview dreams() {
+        return dream.overview();
+    }
+
+    @GetMapping("/wiki")
+    public List<MemoryDtos.WikiPageView> wiki() {
+        return dream.wiki();
+    }
+
+    @GetMapping("/wiki/{slug}")
+    public MemoryDtos.WikiPageView wikiPage(@PathVariable String slug) {
+        return dream.page(slug);
+    }
+
+    @GetMapping("/context")
+    public MemoryDtos.MemoryContext context(
+            @RequestParam(required = false, name = "q") String query,
+            @RequestParam(required = false) String sessionId,
+            @RequestParam(required = false) String domain,
+            @RequestParam(required = false) String datasource,
+            @RequestParam(required = false) String user) {
+        return dream.context(query, sessionId, domain, datasource, user);
     }
 }

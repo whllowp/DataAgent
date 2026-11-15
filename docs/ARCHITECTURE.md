@@ -28,7 +28,7 @@ flowchart TB
     direction TB
     Panel["DataAgent SQL 面板<br/>Schema 树 / 编辑器 / 结果 / 历史 / 知识库"]
     DSH["DSH Agent + 大模型"]
-    MCP["MCP stdio bridge<br/>51 个 dataagent_* 工具"]
+    MCP["MCP stdio bridge<br/>59 个 dataagent_* 工具"]
     Panel -->|"HTTPS / REST"| Gateway
     DSH -->|"tool call"| MCP
     MCP -->|"HTTPS / REST"| Gateway
@@ -413,6 +413,24 @@ EXPLAIN <sql>
 
 详见 [DSH-OBSERVABILITY.md](DSH-OBSERVABILITY.md)。
 
+### 3.26 记忆分层 / Dreaming
+
+- `agent_memory` 增加 tenant、layer、salience、validated、evidence、supersedes
+- `MemoryDreamService` 离线合并/纠正 note，生成 `memory_wiki_page`/`link` 与注入快照
+- `MemoryContext` 返回 injected notes、wiki、transcripts，受 1600 token 预算约束
+
+详见 [MEMORY-HIERARCHY.md](MEMORY-HIERARCHY.md)。
+
+### 3.27 Auto-Ontology 语义编译
+
+- `semantic_term_column`：term → 物理列映射
+- `semantic_sql_attribute`：可复用 SQL 表达式与 provenance
+- `semantic_join`：term 间 join path
+- `OntologyService`：metadata 编译、answerability、join path、graph、certification
+- `/api/lineage/impact` / `field-impact` 合并 semantic terms、字段映射、SQL attributes
+
+详见 [ONTOLOGY.md](ONTOLOGY.md)。
+
 ## 4. 数据模型
 
 ```mermaid
@@ -539,6 +557,12 @@ V11 新增：
 V12 新增：
 
 - `rsi_run` / `rsi_generation` / `rsi_candidate` / `rsi_evaluation`：harness genome、replay 评估、代际和 Pareto 归档。
+
+V13 新增：
+
+- `agent_memory` 的记忆分层/租户/salience/evidence 字段。
+- `memory_wiki_page` / `memory_wiki_link` / `memory_dream_run` / `memory_context_snapshot`。
+- `semantic_term_column` / `semantic_sql_attribute` / `semantic_join` / `semantic_compile_run`。
 
 ## 5. 关键流程
 
@@ -726,6 +750,14 @@ dsh-plugin/
 | `dataagent_rsi_start` | RSI 启动 |
 | `dataagent_rsi_status` | RSI 状态 |
 | `dataagent_rsi_pareto` | RSI Pareto |
+| `dataagent_memory_dream` | 记忆 dreaming |
+| `dataagent_memory_context` | 分层记忆上下文 |
+| `dataagent_memory_wiki` | 记忆 wiki |
+| `dataagent_ontology_compile` | ontology 编译 |
+| `dataagent_ontology_answerable` | 可回答性 |
+| `dataagent_ontology_join_path` | join 路径 |
+| `dataagent_ontology_impact` | 语义血缘影响面 |
+| `dataagent_ontology_graph` | ontology 图 |
 
 所有工具最终受云端的只读网关约束；模型不能通过 MCP 绕过 `SqlGuard`。
 

@@ -30,6 +30,13 @@ public final class MemoryDtos {
             Instant lastUsedAt,
             Instant expiresAt,
             UUID knowledgeId,
+            String layer,
+            int salience,
+            boolean validated,
+            Instant lastValidatedAt,
+            String evidence,
+            UUID supersedesId,
+            String wikiSlug,
             Instant createdAt,
             Instant updatedAt
     ) {
@@ -67,5 +74,80 @@ public final class MemoryDtos {
     }
 
     public record ArchiveResult(int archived) {
+    }
+
+    public record WikiPageView(
+            UUID id,
+            String slug,
+            String title,
+            String summary,
+            String content,
+            String pageType,
+            int tokenEstimate,
+            String sourceMemoryIds,
+            String status,
+            int linkCount,
+            Instant createdAt,
+            Instant updatedAt
+    ) {
+    }
+
+    public record WikiLinkView(
+            UUID fromPageId,
+            String fromSlug,
+            UUID toPageId,
+            String toSlug,
+            String relation,
+            int confidence
+    ) {
+    }
+
+    public record DreamRunView(
+            UUID id,
+            String triggerType,
+            String status,
+            int scannedTranscripts,
+            int scannedMemories,
+            int mergedMemories,
+            int correctedMemories,
+            int promotedNotes,
+            int wikiPages,
+            int wikiLinks,
+            int contextTokens,
+            String message,
+            Instant startedAt,
+            Instant finishedAt
+    ) {
+    }
+
+    public record ContextTranscript(
+            UUID queryId,
+            String sqlPreview,
+            String status,
+            long durationMs,
+            Instant createdAt
+    ) {
+    }
+
+    public record DreamOverview(
+            long totalRuns,
+            long wikiPages,
+            long wikiLinks,
+            long contextTokens,
+            DreamRunView lastRun,
+            List<DreamRunView> recentRuns,
+            List<WikiPageView> pages
+    ) {
+    }
+
+    public record MemoryContext(
+            String query,
+            List<MemoryView> injected,
+            List<MemoryView> notes,
+            List<WikiPageView> wiki,
+            List<ContextTranscript> transcripts,
+            int tokenEstimate,
+            int tokenBudget
+    ) {
     }
 }

@@ -2,6 +2,7 @@ package com.dataagent.service;
 
 import com.dataagent.domain.MemoryCandidate;
 import com.dataagent.repository.MemoryCandidateRepository;
+import com.dataagent.security.AuthContext;
 import com.dataagent.web.dto.MemoryCandidateDtos;
 import com.dataagent.web.dto.MemoryDtos;
 import org.springframework.stereotype.Service;
@@ -39,9 +40,11 @@ public class MemoryCandidateService {
 
     @Transactional(readOnly = true)
     public List<MemoryCandidateDtos.View> list(String status) {
+        String tenant = tenant();
         List<MemoryCandidate> items = status == null || status.isBlank()
-                ? candidates.findAllByOrderByCreatedAtDesc()
-                : candidates.findByStatusOrderByCreatedAtDesc(status.trim().toUpperCase(Locale.ROOT));
+                ? candidates.findByTenantIdOrderByCreatedAtDesc(tenant)
+                : candidates.findByTenantIdAndStatusOrderByCreatedAtDesc(tenant,
+                status.trim().toUpperCase(Locale.ROOT));
         return items.stream().map(this::view).toList();
     }
 
@@ -80,10 +83,11 @@ public class MemoryCandidateService {
                     continue;
                 }
                 String hash = sha256(content);
-                if (!seen.add(hash) || candidates.findByContentHash(hash).isPresent()) {
+                if (!seen.add(hash) || candidates.findByTenantIdAndContentHash(tenant(), hash).isPresent()) {
                     continue;
                 }
                 MemoryCandidate candidate = new MemoryCandidate();
+                candidate.setTenantId(tenant());
                 candidate.setSessionId(sessionId);
                 candidate.setQuestion(question);
                 candidate.setSourceText(truncate(content, 8000));
@@ -161,7 +165,12 @@ public class MemoryCandidateService {
 
     private MemoryCandidate required(UUID id) {
         return candidates.findById(id)
+                .filter(candidate -> tenant().equals(candidate.getTenantId()))
                 .orElseThrow(() -> new IllegalArgumentException("记忆候选不存在: " + id));
+    }
+
+    private static String tenant() {
+        return AuthContext.currentOrSystem().tenantId();
     }
 
     private MemoryCandidateDtos.View view(MemoryCandidate candidate) {

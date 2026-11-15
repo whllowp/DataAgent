@@ -11,6 +11,9 @@ import java.util.UUID;
 @Table(name = "memory_candidate")
 public class MemoryCandidate extends BaseEntity {
 
+    @Column(name = "tenant_id", nullable = false, length = 80)
+    private String tenantId = "default";
+
     @Column(name = "session_id", length = 200)
     private String sessionId;
 
@@ -61,6 +64,14 @@ public class MemoryCandidate extends BaseEntity {
 
     @Column(name = "reviewed_at")
     private Instant reviewedAt;
+
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId;
+    }
 
     public String getSessionId() {
         return sessionId;

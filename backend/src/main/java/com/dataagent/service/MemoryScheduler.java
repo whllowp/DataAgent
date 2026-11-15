@@ -11,9 +11,21 @@ public class MemoryScheduler {
     private static final Logger log = LoggerFactory.getLogger(MemoryScheduler.class);
 
     private final MemoryService memories;
+    private final MemoryDreamService dream;
 
-    public MemoryScheduler(MemoryService memories) {
+    public MemoryScheduler(MemoryService memories, MemoryDreamService dream) {
         this.memories = memories;
+        this.dream = dream;
+    }
+
+    @Scheduled(cron = "${dataagent.memory.dream-cron:0 30 3 * * *}")
+    public void dream() {
+        try {
+            var run = dream.dream("SCHEDULED");
+            log.info("Memory dreaming completed: {}", run.message());
+        } catch (Exception e) {
+            log.warn("Memory dreaming failed: {}", e.getMessage());
+        }
     }
 
     @Scheduled(cron = "${dataagent.memory.archive-cron:0 15 3 * * *}")

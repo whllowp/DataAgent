@@ -253,3 +253,6 @@ SRE 可用性基准：验证只读网关、连接池和 customers 表的健康�
 - 实体关系图与字段级血缘（复用工作区 `openLine`）
 - 人工审核队列：AUTO 关联需确认后才进入正式知识
 - 语义层变更影响分析：哪些 SQL/知识/看板引用了该指标
+
+> Auto-Ontology 风格编译、字段映射、SQL attributes、join path、answerability 和语义血缘见 [ONTOLOGY.md](ONTOLOGY.md)。
+

@@ -202,3 +202,6 @@ MCP：
 - 对过期/低置信记忆只归档不删除，保留审计
 - 候选审核与反馈纠错必须保留 reviewedBy/reviewedAt
 - 远程 embedding 模型可作为本地 hashed embedding 的替换实现
+
+> 记忆分层、dreaming、wiki 与注入预算的详细设计见 [MEMORY-HIERARCHY.md](MEMORY-HIERARCHY.md)。
+

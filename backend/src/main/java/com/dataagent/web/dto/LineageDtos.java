@@ -80,7 +80,10 @@ public final class LineageDtos {
             List<VerifiedRef> verifiedQueries,
             List<EntityRef> semanticEntities,
             List<EtlRef> etlTasks,
-            List<OpenLineageRef> openLineageJobs
+            List<OpenLineageRef> openLineageJobs,
+            List<SemanticDtos.TermView> semanticTerms,
+            List<SemanticDtos.TermColumnView> termColumns,
+            List<SemanticDtos.SqlAttributeView> sqlAttributes
     ) {
     }
 
@@ -90,7 +93,10 @@ public final class LineageDtos {
             String piiType,
             List<AssetRef> assets,
             List<VerifiedRef> verifiedQueries,
-            List<FieldEdgeRef> fieldEdges
+            List<FieldEdgeRef> fieldEdges,
+            List<SemanticDtos.TermView> semanticTerms,
+            List<SemanticDtos.TermColumnView> termColumns,
+            List<SemanticDtos.SqlAttributeView> sqlAttributes
     ) {
     }
 

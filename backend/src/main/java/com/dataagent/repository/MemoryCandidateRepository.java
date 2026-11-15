@@ -9,9 +9,9 @@ import java.util.UUID;
 
 public interface MemoryCandidateRepository extends JpaRepository<MemoryCandidate, UUID> {
 
-    List<MemoryCandidate> findByStatusOrderByCreatedAtDesc(String status);
+    List<MemoryCandidate> findByTenantIdAndStatusOrderByCreatedAtDesc(String tenantId, String status);
 
-    List<MemoryCandidate> findAllByOrderByCreatedAtDesc();
+    List<MemoryCandidate> findByTenantIdOrderByCreatedAtDesc(String tenantId);
 
-    Optional<MemoryCandidate> findByContentHash(String contentHash);
+    Optional<MemoryCandidate> findByTenantIdAndContentHash(String tenantId, String contentHash);
 }

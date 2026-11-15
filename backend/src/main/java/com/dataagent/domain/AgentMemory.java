@@ -11,6 +11,9 @@ import java.util.UUID;
 @Table(name = "agent_memory")
 public class AgentMemory extends BaseEntity {
 
+    @Column(name = "tenant_id", nullable = false, length = 80)
+    private String tenantId = "default";
+
     @Column(nullable = false, length = 20)
     private String scope;
 
@@ -58,6 +61,91 @@ public class AgentMemory extends BaseEntity {
 
     @Column(name = "knowledge_id")
     private UUID knowledgeId;
+
+    @Column(nullable = false, length = 20)
+    private String layer = "NOTE";
+
+    @Column(nullable = false)
+    private int salience = 50;
+
+    @Column(nullable = false)
+    private boolean validated;
+
+    @Column(name = "last_validated_at")
+    private Instant lastValidatedAt;
+
+    @Column(columnDefinition = "TEXT")
+    private String evidence;
+
+    @Column(name = "supersedes_id")
+    private UUID supersedesId;
+
+    @Column(name = "wiki_slug", length = 200)
+    private String wikiSlug;
+
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId;
+    }
+
+    public String getLayer() {
+        return layer;
+    }
+
+    public void setLayer(String layer) {
+        this.layer = layer;
+    }
+
+    public int getSalience() {
+        return salience;
+    }
+
+    public void setSalience(int salience) {
+        this.salience = salience;
+    }
+
+    public boolean isValidated() {
+        return validated;
+    }
+
+    public void setValidated(boolean validated) {
+        this.validated = validated;
+    }
+
+    public Instant getLastValidatedAt() {
+        return lastValidatedAt;
+    }
+
+    public void setLastValidatedAt(Instant lastValidatedAt) {
+        this.lastValidatedAt = lastValidatedAt;
+    }
+
+    public String getEvidence() {
+        return evidence;
+    }
+
+    public void setEvidence(String evidence) {
+        this.evidence = evidence;
+    }
+
+    public UUID getSupersedesId() {
+        return supersedesId;
+    }
+
+    public void setSupersedesId(UUID supersedesId) {
+        this.supersedesId = supersedesId;
+    }
+
+    public String getWikiSlug() {
+        return wikiSlug;
+    }
+
+    public void setWikiSlug(String wikiSlug) {
+        this.wikiSlug = wikiSlug;
+    }
 
     public String getScope() {
         return scope;

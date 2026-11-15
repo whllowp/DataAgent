@@ -2,6 +2,7 @@ package com.dataagent.service;
 
 import com.dataagent.domain.AgentMemory;
 import com.dataagent.repository.AgentMemoryRepository;
+import com.dataagent.security.AuthContext;
 import com.dataagent.web.dto.KnowledgeDtos;
 import com.dataagent.web.dto.MemoryDtos;
 import org.springframework.stereotype.Service;
@@ -33,7 +34,8 @@ public class MemoryService {
 
     @Transactional(readOnly = true)
     public List<MemoryDtos.MemoryView> list(String q, String scope, String kind, String status) {
-        return memories.search(blank(q) ? null : q.trim(),
+        return memories.search(tenant(),
+                        blank(q) ? null : q.trim(),
                         blank(scope) ? null : scope.trim().toUpperCase(Locale.ROOT),
                         blank(kind) ? null : kind.trim().toUpperCase(Locale.ROOT),
                         blank(status) ? null : status.trim().toUpperCase(Locale.ROOT))
@@ -50,11 +52,13 @@ public class MemoryService {
         String scope = request.scope().trim().toUpperCase(Locale.ROOT);
         String key = request.key().trim();
         String scopeKey = blank(request.scopeKey()) ? null : request.scopeKey().trim();
-        AgentMemory memory = memories.findExact(scope, scopeKey, key).orElseGet(AgentMemory::new);
+        String tenant = tenant();
+        AgentMemory memory = memories.findExact(tenant, scope, scopeKey, key).orElseGet(AgentMemory::new);
         boolean created = memory.getId() == null;
         List<MemoryDtos.MemoryView> conflicts = created ? List.of() :
                 conflicts(scope, scopeKey, key, request.content());
         if (created) {
+            memory.setTenantId(tenant);
             memory.setScope(scope);
             memory.setScopeKey(scopeKey);
             memory.setKind(request.kind().trim().toUpperCase(Locale.ROOT));
@@ -63,6 +67,8 @@ public class MemoryService {
             memory.setConfidence(clamp(request.confidence(), 70));
             memory.setImportance(clamp(request.importance(), 50));
             memory.setReinforcementCount(1);
+            memory.setLayer("NOTE");
+            memory.setSalience(clamp(request.importance(), 50));
         } else {
             memory.setConfidence(Math.min(100, Math.max(memory.getConfidence(), clamp(request.confidence(), memory.getConfidence())) + 3));
             memory.setImportance(Math.max(memory.getImportance(), clamp(request.importance(), memory.getImportance())));
@@ -101,7 +107,7 @@ public class MemoryService {
         return new MemoryDtos.CaptureResult(view(memory), linkedKnowledge, conflicts);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public MemoryDtos.MemoryView update(UUID id, MemoryDtos.CaptureRequest request) {
         AgentMemory memory = required(id);
         memory.setContent(request.content().trim());
@@ -111,6 +117,16 @@ public class MemoryService {
         memory.setTags(merge(memory.getTags(), request.tags()));
         memory.setOwner(blank(request.owner()) ? memory.getOwner() : request.owner().trim());
         memory.setExpiresAt(request.expiresAt());
+        return view(memories.save(memory));
+    }
+
+    @Transactional
+    public MemoryDtos.MemoryView validate(UUID id) {
+        AgentMemory memory = required(id);
+        memory.setValidated(true);
+        memory.setLastValidatedAt(Instant.now());
+        memory.setConfidence(Math.min(100, memory.getConfidence() + 5));
+        memory.setSalience(Math.min(100, memory.getSalience() + 5));
         return view(memories.save(memory));
     }
 
@@ -136,7 +152,8 @@ public class MemoryService {
 
     @Transactional
     public MemoryDtos.ArchiveResult archiveExpired() {
-        List<AgentMemory> expired = memories.findByStatusAndExpiresAtBefore("ACTIVE", Instant.now());
+        List<AgentMemory> expired = memories.findByTenantIdAndStatusAndExpiresAtBefore(
+                tenant(), "ACTIVE", Instant.now());
         expired.forEach(memory -> memory.setStatus("ARCHIVED"));
         memories.saveAll(expired);
         return new MemoryDtos.ArchiveResult(expired.size());
@@ -144,17 +161,15 @@ public class MemoryService {
 
     @Transactional(readOnly = true)
     public MemoryDtos.MemoryOverview overview() {
-        List<AgentMemory> all = memories.findAll();
-        List<MemoryDtos.MemoryView> recent = all.stream()
-                .sorted((left, right) -> right.getUpdatedAt().compareTo(left.getUpdatedAt()))
-                .limit(8)
-                .map(this::view)
-                .toList();
-        return new MemoryDtos.MemoryOverview(all.size(),
-                all.stream().filter(item -> "ACTIVE".equals(item.getStatus())).count(),
-                all.stream().filter(item -> "ARCHIVED".equals(item.getStatus())).count(),
-                all.stream().filter(item -> item.getKnowledgeId() != null).count(),
-                recent);
+        String tenant = tenant();
+        List<AgentMemory> recentRows = memories.findByTenantIdAndStatusOrderBySalienceDesc(tenant, "ACTIVE")
+                .stream().limit(8).toList();
+        return new MemoryDtos.MemoryOverview(
+                memories.countByTenantId(tenant),
+                memories.countByTenantIdAndStatus(tenant, "ACTIVE"),
+                memories.countByTenantIdAndStatus(tenant, "ARCHIVED"),
+                memories.countByTenantIdAndKnowledgeIdIsNotNull(tenant),
+                recentRows.stream().map(this::view).toList());
     }
 
     /**
@@ -166,6 +181,7 @@ public class MemoryService {
     public List<MemoryDtos.MemoryView> context(String query, String domainKey,
                                                String datasourceKey, String userKey) {
         List<AgentMemory> candidates = memories.findContextCandidates(
+                tenant(),
                 domainKey == null ? "" : domainKey,
                 datasourceKey == null ? "" : datasourceKey,
                 userKey == null ? "" : userKey,
@@ -179,7 +195,7 @@ public class MemoryService {
 
     @Transactional(readOnly = true)
     public List<MemoryDtos.MemoryView> conflicts(String scope, String scopeKey, String key, String content) {
-        return memories.findExact(scope, scopeKey, key)
+        return memories.findExact(tenant(), scope, scopeKey, key)
                 .map(existing -> {
                     double similarity = embeddings.similarity(
                             embeddings.embed(existing.getContent()), embeddings.embed(content));
@@ -200,6 +216,7 @@ public class MemoryService {
 
     private AgentMemory required(UUID id) {
         return memories.findById(id)
+                .filter(memory -> tenant().equals(memory.getTenantId()))
                 .orElseThrow(() -> new IllegalArgumentException("长期记忆不存在: " + id));
     }
 
@@ -209,7 +226,31 @@ public class MemoryService {
                 memory.getConfidence(), memory.getImportance(), memory.getStatus(), memory.getTags(),
                 memory.getOwner(), memory.getUseCount(), memory.getReinforcementCount(),
                 memory.getLastUsedAt(), memory.getExpiresAt(), memory.getKnowledgeId(),
-                memory.getCreatedAt(), memory.getUpdatedAt());
+                memory.getLayer(), memory.getSalience(), memory.isValidated(),
+                memory.getLastValidatedAt(), memory.getEvidence(), memory.getSupersedesId(),
+                memory.getWikiSlug(), memory.getCreatedAt(), memory.getUpdatedAt());
+    }
+
+    public MemoryDtos.MemoryView viewOf(AgentMemory memory) {
+        return view(memory);
+    }
+
+    @Transactional
+    public void touch(List<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        List<AgentMemory> found = memories.findAllById(ids);
+        Instant now = Instant.now();
+        found.forEach(memory -> {
+            memory.setUseCount(memory.getUseCount() + 1);
+            memory.setLastUsedAt(now);
+        });
+        memories.saveAll(found);
+    }
+
+    private static String tenant() {
+        return AuthContext.currentOrSystem().tenantId();
     }
 
     private static int clamp(Integer value, int fallback) {

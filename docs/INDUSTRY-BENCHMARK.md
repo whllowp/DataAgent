@@ -22,6 +22,8 @@
 | ETL / 调度血缘 | 任务依赖、调度、端到端表血缘 | 新增 **DolphinScheduler 导入、任务/工作流依赖、关键路径** |
 | 字段级 / OpenLineage | 列级血缘、标准事件、外部调度器 | 新增 **目标 schema 映射、DS REST 拉取、Marquez job/run API、run 血缘** |
 | RSI / 自我演进 | discovery tree、replay objective、多目标 harness 进化 | 新增 **harness genome、Tchebycheff 选择、Pareto、十代演进** |
+| 记忆分层 / Dreaming | transcripts→notes→wiki→injected context | 新增 **dreaming 合并/纠错、salience、wiki、token 预算** |
+| Auto-Ontology | terms、column mapping、SQL attributes、joins、answerability | 新增 **metadata 编译、可回答性、join path、认证、语义血缘** |
 | 治理 | 权限、审计、PII、只读、成本上限 | 只读网关 + Token；RBAC/行级权限待补 |
 
 ## 2. 本轮落地

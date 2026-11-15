@@ -214,4 +214,149 @@ public final class SemanticDtos {
             List<SyncRunView> recentRuns
     ) {
     }
+
+    public record CompileRequest(
+            @NotNull UUID datasourceId,
+            @Size(max = 200) String schema,
+            @Size(max = 30) String mode
+    ) {
+    }
+
+    public record CompileRunView(
+            UUID id,
+            UUID datasourceId,
+            String schemaName,
+            String status,
+            int scannedTables,
+            int scannedColumns,
+            int createdTerms,
+            int mappedColumns,
+            int createdJoins,
+            int createdAttributes,
+            String message,
+            Instant startedAt,
+            Instant finishedAt
+    ) {
+    }
+
+    public record TermColumnView(
+            UUID id,
+            UUID termId,
+            String term,
+            UUID datasourceId,
+            String schemaName,
+            String tableName,
+            String columnName,
+            String role,
+            int confidence,
+            String status,
+            String provenance,
+            Instant updatedAt
+    ) {
+    }
+
+    public record SqlAttributeView(
+            UUID id,
+            UUID termId,
+            String term,
+            String name,
+            String displayName,
+            String expression,
+            String businessDefinition,
+            String grain,
+            String synonyms,
+            String owner,
+            String tags,
+            String status,
+            int confidence,
+            String source,
+            int usageCount,
+            Instant lastUsedAt,
+            String provenance,
+            Instant updatedAt
+    ) {
+    }
+
+    public record JoinView(
+            UUID id,
+            String name,
+            UUID fromTermId,
+            String fromTerm,
+            UUID toTermId,
+            String toTerm,
+            String joinCondition,
+            String relationshipType,
+            int confidence,
+            String status,
+            String source,
+            String provenance,
+            Instant updatedAt
+    ) {
+    }
+
+    public record Answerability(
+            String question,
+            boolean answerable,
+            double coverage,
+            List<TermView> terms,
+            List<TermColumnView> columns,
+            List<SqlAttributeView> sqlAttributes,
+            List<JoinView> joins,
+            List<String> missingConcepts,
+            String explanation
+    ) {
+    }
+
+    public record OntologyImpact(
+            String table,
+            String column,
+            List<TermView> terms,
+            List<TermColumnView> columns,
+            List<SqlAttributeView> sqlAttributes,
+            List<JoinView> joins
+    ) {
+    }
+
+    public record OntologyNode(
+            String id,
+            String kind,
+            String label,
+            String status,
+            String detail
+    ) {
+    }
+
+    public record OntologyEdge(
+            String from,
+            String to,
+            String kind,
+            String label,
+            int confidence
+    ) {
+    }
+
+    public record OntologyGraph(
+            List<OntologyNode> nodes,
+            List<OntologyEdge> edges
+    ) {
+    }
+
+    public record CertifyRequest(
+            @Size(max = 20) String status,
+            @Size(max = 120) String owner,
+            @Size(max = 2000) String note
+    ) {
+    }
+
+    public record JoinRequest(
+            @NotBlank @Size(max = 200) String name,
+            @NotNull UUID fromTermId,
+            @NotNull UUID toTermId,
+            @NotBlank @Size(max = 8000) String joinCondition,
+            @Size(max = 40) String relationshipType,
+            Integer confidence,
+            @Size(max = 20) String status,
+            @Size(max = 30) String source
+    ) {
+    }
 }
