@@ -83,7 +83,10 @@ public final class LineageDtos {
             List<OpenLineageRef> openLineageJobs,
             List<SemanticDtos.TermView> semanticTerms,
             List<SemanticDtos.TermColumnView> termColumns,
-            List<SemanticDtos.SqlAttributeView> sqlAttributes
+            List<SemanticDtos.SqlAttributeView> sqlAttributes,
+            List<SemanticDtos.JoinView> semanticJoins,
+            double semanticConfidence,
+            List<String> semanticGaps
     ) {
     }
 
@@ -96,7 +99,10 @@ public final class LineageDtos {
             List<FieldEdgeRef> fieldEdges,
             List<SemanticDtos.TermView> semanticTerms,
             List<SemanticDtos.TermColumnView> termColumns,
-            List<SemanticDtos.SqlAttributeView> sqlAttributes
+            List<SemanticDtos.SqlAttributeView> sqlAttributes,
+            List<SemanticDtos.JoinView> semanticJoins,
+            double semanticConfidence,
+            List<String> semanticGaps
     ) {
     }
 

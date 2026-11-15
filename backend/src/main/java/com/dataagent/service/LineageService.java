@@ -158,7 +158,26 @@ public class LineageService {
         SemanticDtos.OntologyImpact ontologyImpact = ontology.impact(normalized, null);
         return new LineageDtos.Impact(normalized, assetRefs, verifiedRefs, entityRefs, etlRefs,
                 openLineageRefs, ontologyImpact.terms(), ontologyImpact.columns(),
-                ontologyImpact.sqlAttributes());
+                ontologyImpact.sqlAttributes(), ontologyImpact.joins(),
+                semanticConfidence(ontologyImpact), semanticGaps(ontologyImpact));
+    }
+
+    private double semanticConfidence(SemanticDtos.OntologyImpact impact) {
+        if (impact == null || impact.joins().isEmpty()) {
+            return 0;
+        }
+        return Math.round(impact.joins().stream()
+                .mapToInt(SemanticDtos.JoinView::confidence).average().orElse(0) * 10.0) / 1000.0;
+    }
+
+    private List<String> semanticGaps(SemanticDtos.OntologyImpact impact) {
+        if (impact == null || impact.joins().isEmpty()) {
+            return List.of("no semantic join path");
+        }
+        return impact.joins().stream()
+                .filter(join -> join.confidence() < 80)
+                .map(join -> join.name() + " confidence=" + join.confidence())
+                .toList();
     }
 
     private List<EtlTask> tenantEtlTasks() {
@@ -272,7 +291,8 @@ public class LineageService {
         SemanticDtos.OntologyImpact ontologyImpact = ontology.impact(normalizedTable, normalizedColumn);
         return new LineageDtos.FieldImpact(normalizedTable, normalizedColumn,
                 pii.classify(normalizedColumn, normalizedColumn), assetRefs, verifiedRefs, fieldEdges,
-                ontologyImpact.terms(), ontologyImpact.columns(), ontologyImpact.sqlAttributes());
+                ontologyImpact.terms(), ontologyImpact.columns(), ontologyImpact.sqlAttributes(),
+                ontologyImpact.joins(), semanticConfidence(ontologyImpact), semanticGaps(ontologyImpact));
     }
 
     public Map<String, String> tableAliases(String sql) {

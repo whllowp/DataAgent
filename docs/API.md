@@ -1262,9 +1262,30 @@ POST /api/semantic/ontology/attributes/{id}/certify
 POST /api/semantic/ontology/joins/{id}/certify
 ```
 
-`/api/lineage/impact` 和 `/api/lineage/field-impact` 额外返回 `semanticTerms`、`termColumns`、`sqlAttributes`。详见 [ONTOLOGY.md](ONTOLOGY.md)。
+`/api/lineage/impact` 和 `/api/lineage/field-impact` 额外返回 `semanticTerms`、`termColumns`、`sqlAttributes`、`semanticJoins`、`semanticConfidence`、`semanticGaps`。详见 [ONTOLOGY.md](ONTOLOGY.md)。
 
-## 20. curl 速查
+## 20. 记忆 / Ontology 十轮演进
+
+```http
+GET  /api/evolution/memory/index?q=&budget=1600
+GET  /api/evolution/memory/transcripts?q=&limit=10
+GET  /api/evolution/memory/citations
+POST /api/evolution/memory/citations/repair
+GET  /api/evolution/memory/rounds?count=10
+
+POST /api/evolution/semantic/infer-joins
+GET  /api/evolution/semantic/bridges
+GET  /api/evolution/semantic/drift?datasourceId=&schema=
+GET  /api/evolution/semantic/answerable-v2?q=
+GET  /api/evolution/semantic/lineage?table=&column=
+GET  /api/evolution/semantic/rounds?count=10
+```
+
+`rounds` 返回 10 个可观测迭代（score + detail），`memory/index` 返回 token
+预算内的注入索引，`semantic/drift` 对比实时元数据与已存 term column 映射，
+`semantic/lineage` 组合物理血缘与语义 join。详见 [EVOLUTION-10.md](EVOLUTION-10.md)。
+
+## 21. curl 速查
 
 ```bash
 TOKEN=dataagent-dev-token

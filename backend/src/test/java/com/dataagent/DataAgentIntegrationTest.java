@@ -25,7 +25,9 @@ import com.dataagent.service.FeedbackService;
 import com.dataagent.service.LineageService;
 import com.dataagent.service.MemoryCandidateService;
 import com.dataagent.service.MemoryDreamService;
+import com.dataagent.service.MemoryEvolutionService;
 import com.dataagent.service.MemoryService;
+import com.dataagent.service.OntologyEvolutionService;
 import com.dataagent.service.OntologyService;
 import com.dataagent.service.PiiService;
 import com.dataagent.service.QueryResultCache;
@@ -118,6 +120,10 @@ class DataAgentIntegrationTest {
     private MemoryService memories;
     @Autowired
     private MemoryDreamService memoryDream;
+    @Autowired
+    private MemoryEvolutionService memoryEvolution;
+    @Autowired
+    private OntologyEvolutionService ontologyEvolution;
     @Autowired
     private OntologyService ontology;
     @Autowired
@@ -382,6 +388,9 @@ class DataAgentIntegrationTest {
 
         assertFalse(lineage.impact("sales_orders").assets().isEmpty());
         assertFalse(lineage.impact("sales_orders").semanticEntities().isEmpty());
+        assertNotNull(lineage.impact("sales_orders").semanticJoins());
+        assertTrue(lineage.impact("sales_orders").semanticConfidence() >= 0);
+        assertNotNull(lineage.impact("sales_orders").semanticGaps());
         assertFalse(lineage.tables().isEmpty());
     }
 
@@ -641,6 +650,78 @@ class DataAgentIntegrationTest {
         var source = semantic.listTerms("SALES_ORDERS").stream().findFirst().orElseThrow();
         var target = semantic.listTerms("CUSTOMERS").stream().findFirst().orElseThrow();
         assertFalse(ontology.joinPath(source.id(), target.id()).isEmpty());
+    }
+
+    @Test
+    void memoryEvolutionBuildsBoundedIndexAndAuditsCitations() {
+        QueryExecution transcript = executions.findAll().stream().findFirst().orElseThrow();
+        String key = "memory.evolution." + Math.abs(System.nanoTime());
+        AgentMemory memory = testMemory(key, "Use customer_id = id for the verified customer join.", 82);
+        memory.setEvidence("transcript:" + transcript.getId());
+        memoryRepository.save(memory);
+
+        MemoryEvolutionService.CitationAudit audit = memoryEvolution.auditCitations();
+        assertEquals(1, audit.validCitations());
+        assertEquals(0, audit.danglingCitations());
+
+        MemoryEvolutionService.IndexView index = memoryEvolution.index("customer", 1600);
+        assertFalse(index.notes().isEmpty());
+        assertTrue(index.tokenEstimate() <= index.tokenBudget());
+
+        MemoryEvolutionService.CitationRepair repair = memoryEvolution.repairCitations();
+        assertTrue(repair.checked() > 0);
+        assertEquals(0, repair.dangling());
+
+        MemoryEvolutionService.EvolutionReport report = memoryEvolution.evolution(10);
+        assertEquals(10, report.rounds());
+        assertEquals(10, report.iterations().size());
+        assertTrue(report.after() >= report.before());
+
+        assertFalse(memoryEvolution.searchTranscripts("SELECT", 5).isEmpty());
+    }
+
+    @Test
+    void dreamingValidatesExplicitTranscriptCitation() {
+        QueryExecution transcript = executions.findAll().stream()
+                .filter(row -> "SUCCESS".equalsIgnoreCase(row.getStatus()))
+                .findFirst().orElseThrow();
+        String key = "dream.citation." + Math.abs(System.nanoTime());
+        AgentMemory memory = testMemory(key, "Use the verified join customer_id = id for this SQL.", 75);
+        memory.setEvidence("transcript:" + transcript.getId());
+        memoryRepository.save(memory);
+
+        memoryDream.dream("TEST");
+
+        AgentMemory reloaded = memoryRepository.findById(memory.getId()).orElseThrow();
+        assertTrue(reloaded.isValidated());
+        assertTrue(reloaded.getEvidence().contains("citations-verified=1"));
+    }
+
+    @Test
+    void ontologyEvolutionMinesJoinsDetectsDriftAndRunsTenRounds() {
+        ontology.compile(new SemanticDtos.CompileRequest(demo.getId(), null, "FULL"));
+        OntologyEvolutionService.JoinInference inference = ontologyEvolution.inferJoinsFromHistory();
+        assertTrue(inference.statements() > 0);
+        assertTrue(inference.equalityPairs() >= 0);
+
+        ontologyEvolution.bridges();
+        OntologyEvolutionService.AnswerabilityV2 answer = ontologyEvolution.answerableV2("CUSTOMERS");
+        assertFalse(answer.base().terms().isEmpty());
+        assertTrue(answer.joinCoverage() >= 0);
+        assertTrue(answer.semanticScore() >= 0);
+
+        OntologyEvolutionService.SemanticPath path = ontologyEvolution.lineagePath("CUSTOMERS", null);
+        assertFalse(path.terms().isEmpty());
+        assertNotNull(path.assets());
+
+        OntologyEvolutionService.DriftReport drift = ontologyEvolution.drift(demo.getId(), null);
+        assertTrue(drift.tablesChecked() > 0);
+        assertTrue(drift.physicalColumns() > 0);
+
+        OntologyEvolutionService.EvolutionReport report = ontologyEvolution.evolution(10);
+        assertEquals(10, report.rounds());
+        assertEquals(10, report.iterations().size());
+        assertTrue(report.after() >= report.before());
     }
 
     private AgentMemory testMemory(String key, String content, int importance) {

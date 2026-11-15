@@ -80,7 +80,20 @@ DSH Web GUI 可能是 `http://127.0.0.1:<随机端口>` 或 `dsh-app://`。默�
 
 生产环境应收紧到实际 DSH origin。
 
-## 7. 边界
+## 7. Ignis 龙宠物
+
+右下角宠物已从 CSS 绘制的小析替换为参考图里的 Ignis 火龙：
+
+- 透明 PNG：`dsh-plugin/dragon-pet.png`；
+- 构建时内联为 data URI：`studio/src/dragon-pet.js`；
+- `studio/src/observability.js` 用 `.da-pet-image` 渲染，保留
+  `warn`（暖色/发光）和 `down`（灰度）状态；
+- `npm run build` 重新生成 `dsh-plugin/client.js`；
+- DataAgent 宠物存在时，OpsGraph 宠物会让出 overlay，避免两个宠物重叠。
+
+![Ignis 龙宠物](images/dragon-pet.png)
+
+## 8. 边界
 
 - 这是 DSH 页面内的浮动宠物，不是独立 Electron 透明窗口。
 - 本地观测是浏览器边缘视角，不是 eBPF/主机级 tracing。

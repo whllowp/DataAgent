@@ -1,3 +1,5 @@
+import { DRAGON_PET_URI } from './dragon-pet.js';
+
 const STYLE = `
 :host { all: initial; }
 * { box-sizing: border-box; }
@@ -14,6 +16,27 @@ const STYLE = `
 }
 .da-pet:hover { transform: translateY(-2px) scale(1.02); }
 .da-pet:active { cursor: grabbing; }
+.da-pet { width: 112px; height: 116px; }
+.da-pet-image {
+  position: absolute; right: 0; bottom: 0; width: 112px; height: 112px;
+  object-fit: contain; pointer-events: none; transform-origin: 50% 82%;
+  animation: da-dragon-bob 3.8s ease-in-out infinite;
+  filter: drop-shadow(0 10px 18px rgba(0,0,0,.42)) saturate(1.08);
+}
+.da-pet[data-status="warn"] .da-pet-image {
+  filter: drop-shadow(0 0 12px rgba(255,150,48,.45)) saturate(1.18) sepia(.12);
+}
+.da-pet[data-status="down"] .da-pet-image {
+  filter: grayscale(.72) brightness(.72) drop-shadow(0 8px 14px rgba(0,0,0,.35));
+  opacity: .72;
+}
+.da-pet[data-status="warn"] .da-pet-image,
+.da-pet[data-status="down"] .da-pet-image { animation-duration: 2.2s; }
+@keyframes da-dragon-bob {
+  0%, 100% { transform: translateY(0) rotate(-1.4deg) scale(1); }
+  50% { transform: translateY(-7px) rotate(1.2deg) scale(1.015); }
+}
+
 .da-pet-body {
   position: absolute; left: 9px; bottom: 6px; width: 74px; height: 68px;
   border-radius: 46% 46% 44% 44% / 52% 52% 46% 46%;
@@ -163,7 +186,7 @@ const STYLE = `
   .da-pet-wrap { right: 14px; bottom: 14px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .da-pet-body, .da-pet::after, .da-tail, .da-antenna::after, .da-eye::after { animation: none !important; }
+  .da-pet-image, .da-pet-body, .da-pet::after, .da-tail, .da-antenna::after, .da-eye::after { animation: none !important; }
 }
 `;
 
@@ -315,16 +338,9 @@ export function installDataAgentObservability(ctx) {
     const wrap = document.createElement('div');
     wrap.className = 'da-pet-wrap';
     wrap.innerHTML = `
-      <div class="da-pet" role="button" tabindex="0" aria-label="析析：DataAgent 端云观测宠物" data-status="warn">
+      <div class="da-pet" role="button" tabindex="0" aria-label="Ignis 火龙实验宠物" data-status="warn">
         <div class="da-pet-bubble">正在连接云端…</div>
-        <div class="da-antenna"></div>
-        <div class="da-ear left"></div><div class="da-ear right"></div>
-        <div class="da-pet-body">
-          <div class="da-eye left"></div><div class="da-eye right"></div>
-          <div class="da-cheek left"></div><div class="da-cheek right"></div>
-          <div class="da-mouth"></div>
-        </div>
-        <div class="da-tail"></div>
+        <img class="da-pet-image" alt="" src="${DRAGON_PET_URI}" draggable="false" />
       </div>`;
     const panel = document.createElement('section');
     panel.className = 'da-panel';

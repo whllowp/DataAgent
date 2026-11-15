@@ -301,6 +301,42 @@ dsh-plugin/client.js
 
 前者验证语义同步 `SCHEDULED` 记录；后者用临时实例验证 SRE 基准用例按调度执行并更新 `lastRunAt`。
 
+## Ten-round evolution: memory + ontology + lineage
+
+This build adds an inspectable ten-round evolution over the existing memory and
+Auto-Ontology layers:
+
+- memory index bounded by token budget, transcript search, citation audit/repair,
+  and citation verification inside dreaming;
+- observed JOIN mining from SQL assets / verified queries, bridge-table
+  candidates, metadata drift, answerability v2, and semantic lineage paths;
+- lineage impact now includes `semanticJoins`, `semanticConfidence`, and
+  `semanticGaps`;
+- the DataAgent desktop pet now uses the Ignis dragon image from the supplied
+  reference (transparent PNG, embedded as a data URI).
+
+```http
+GET  /api/evolution/memory/rounds?count=10
+GET  /api/evolution/semantic/rounds?count=10
+GET  /api/evolution/memory/index?budget=1600
+GET  /api/evolution/semantic/bridges
+GET  /api/evolution/semantic/drift?datasourceId=<id>
+GET  /api/evolution/semantic/answerable-v2?q=CUSTOMERS
+GET  /api/evolution/semantic/lineage?table=CUSTOMERS
+```
+
+Local verification:
+
+```text
+memory:   rounds=10 before=60 after=100
+ontology: rounds=10 before=0 after=100
+drift:    tables=3 columns=17 mapped=17 missing=0 orphan=0
+lineage:  semanticJoins=3 confidence=0.783 gaps=2
+```
+
+See [docs/EVOLUTION-10.md](docs/EVOLUTION-10.md) for the round-by-round tables
+and boundaries.
+
 ## Roadmap
 
 | 阶段 | 内容 |

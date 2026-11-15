@@ -31,6 +31,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Offline "dreaming" pass over the agent's notes and logs. It follows the
@@ -45,6 +47,8 @@ public class MemoryDreamService {
     private static final int CONTEXT_BUDGET_TOKENS = 1600;
     private static final int INJECTED_NOTES = 8;
     private static final int WIKI_PAGES = 12;
+    private static final Pattern TRANSCRIPT_REF = Pattern.compile(
+            "(?i)transcript[:=]([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})");
 
     private final AgentMemoryRepository memories;
     private final MemoryWikiPageRepository pages;
@@ -255,8 +259,60 @@ public class MemoryDreamService {
                 memory.setValidated(true);
                 memory.setLastValidatedAt(Instant.now());
             }
+            corrected += verifyCitation(memory);
         }
         return corrected;
+    }
+
+    /**
+     * A note can cite an exact transcript id. That is stronger evidence than a
+     * fuzzy token overlap, so dreaming validates it directly and records
+     * dangling references rather than silently trusting them.
+     */
+    private int verifyCitation(AgentMemory memory) {
+        List<UUID> refs = evidenceRefs(memory.getEvidence());
+        if (refs.isEmpty()) {
+            return 0;
+        }
+        List<QueryExecution> cited = transcripts.findAllById(refs);
+        Set<UUID> found = new LinkedHashSet<>();
+        for (QueryExecution execution : cited) {
+            found.add(execution.getId());
+        }
+        if (found.containsAll(refs)) {
+            boolean success = cited.stream().anyMatch(row -> "SUCCESS".equalsIgnoreCase(row.getStatus()));
+            if (success) {
+                memory.setValidated(true);
+                memory.setLastValidatedAt(Instant.now());
+                memory.setConfidence(Math.min(100, memory.getConfidence() + 2));
+                memory.setEvidence(mergeEvidence(memory.getEvidence(),
+                        "citations-verified=" + refs.size()));
+            } else {
+                memory.setEvidence(mergeEvidence(memory.getEvidence(),
+                        "citations-no-successful-example=" + refs.size()));
+            }
+        } else {
+            memory.setEvidence(mergeEvidence(memory.getEvidence(),
+                    "dangling-citations=" + (refs.size() - found.size())));
+            memory.setConfidence(Math.max(20, memory.getConfidence() - 3));
+        }
+        return 1;
+    }
+
+    private static List<UUID> evidenceRefs(String evidence) {
+        List<UUID> refs = new ArrayList<>();
+        if (evidence == null || evidence.isBlank()) {
+            return refs;
+        }
+        Matcher matcher = TRANSCRIPT_REF.matcher(evidence);
+        while (matcher.find()) {
+            try {
+                refs.add(UUID.fromString(matcher.group(1)));
+            } catch (IllegalArgumentException ignored) {
+                // Keep malformed citations out of the validation set.
+            }
+        }
+        return refs;
     }
 
     private void scoreSalience(AgentMemory memory) {
