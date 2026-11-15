@@ -16,8 +16,7 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
-    "dragon-pet.png",
-    "make_pet.py"
+    "dragon-pet.png"
   ],
   "dsh": {
     "bundle": {
