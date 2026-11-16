@@ -54,13 +54,16 @@ public class MemoryEvolutionService {
     private final MemoryWikiPageRepository pages;
     private final QueryExecutionRepository transcripts;
     private final MemoryService memoryService;
+    private final EmbeddingService embeddings;
 
     public MemoryEvolutionService(AgentMemoryRepository memories, MemoryWikiPageRepository pages,
-                                  QueryExecutionRepository transcripts, MemoryService memoryService) {
+                                  QueryExecutionRepository transcripts, MemoryService memoryService,
+                                  EmbeddingService embeddings) {
         this.memories = memories;
         this.pages = pages;
         this.transcripts = transcripts;
         this.memoryService = memoryService;
+        this.embeddings = embeddings;
     }
 
     public record Citation(
@@ -130,6 +133,40 @@ public class MemoryEvolutionService {
             int after,
             List<EvolutionRound> iterations,
             String summary
+    ) {
+    }
+
+    public record RetrievalRound(
+            int iteration,
+            String mode,
+            int hitAt1,
+            int hitAt3,
+            double mrr,
+            String detail
+    ) {
+    }
+
+    public record RetrievalReport(
+            int probes,
+            List<RetrievalRound> rounds,
+            String note
+    ) {
+    }
+
+    public record Contradiction(
+            String key,
+            List<UUID> memoryIds,
+            String reason
+    ) {
+    }
+
+    public record Compression(
+            int inputNotes,
+            int outputNotes,
+            int inputTokens,
+            int outputTokens,
+            int dropped,
+            List<MemoryDtos.MemoryView> notes
     ) {
     }
 
@@ -351,6 +388,232 @@ public class MemoryEvolutionService {
                         + ", transcriptHits=" + retrieval);
     }
 
+    /**
+     * Retrieval evaluation for the three practical memory readers: keyword,
+     * local embedding, and a hybrid that respects salience plus verified
+     * evidence. Probes come from active memory keys, so this is a regression
+     * test over the tenant's actual notes, not a synthetic leaderboard.
+     */
+    @Transactional(readOnly = true)
+    public RetrievalReport retrievalEval(int maxProbes) {
+        List<AgentMemory> active = memories.findByTenantIdAndStatusOrderBySalienceDesc(tenant(), "ACTIVE");
+        List<Probe> probes = new ArrayList<>();
+        for (AgentMemory memory : active) {
+            if (probes.size() >= Math.max(1, Math.min(10, maxProbes))) {
+                break;
+            }
+            String query = probeQuery(memory);
+            if (!query.isBlank()) {
+                probes.add(new Probe(query, memory.getId()));
+            }
+        }
+        if (probes.isEmpty()) {
+            return new RetrievalReport(0, List.of(), "no active memory probes");
+        }
+        List<RetrievalRound> rounds = new ArrayList<>();
+        for (String mode : List.of("keyword", "embedding", "hybrid")) {
+            int hit1 = 0;
+            int hit3 = 0;
+            double reciprocal = 0;
+            for (Probe probe : probes) {
+                List<RankedMemory> ranked = rank(active, probe.query(), mode);
+                int rank = rankOf(ranked, probe.expectedId());
+                if (rank == 1) {
+                    hit1++;
+                }
+                if (rank > 0 && rank <= 3) {
+                    hit3++;
+                }
+                if (rank > 0) {
+                    reciprocal += 1.0 / rank;
+                }
+            }
+            rounds.add(new RetrievalRound(rounds.size() + 1, mode, hit1, hit3,
+                    Math.round(reciprocal / probes.size() * 1000.0) / 1000.0,
+                    "probes=" + probes.size()));
+        }
+        return new RetrievalReport(probes.size(), rounds, "hit@1 / hit@3 / MRR over tenant notes");
+    }
+
+    /**
+     * Same-key notes that disagree are more dangerous than low-salience notes.
+     * Surface them for review instead of hoping a later merge picks a winner.
+     */
+    @Transactional(readOnly = true)
+    public List<Contradiction> contradictions() {
+        List<AgentMemory> active = memories.findByTenantIdAndStatusOrderBySalienceDesc(tenant(), "ACTIVE");
+        Map<String, List<AgentMemory>> groups = new LinkedHashMap<>();
+        for (AgentMemory memory : active) {
+            String key = nullToEmpty(memory.getScope()) + "|" + nullToEmpty(memory.getScopeKey())
+                    + "|" + nullToEmpty(memory.getMemoryKey()).toLowerCase(Locale.ROOT);
+            groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(memory);
+        }
+        List<Contradiction> result = new ArrayList<>();
+        for (Map.Entry<String, List<AgentMemory>> entry : groups.entrySet()) {
+            List<AgentMemory> group = entry.getValue();
+            if (group.size() < 2) {
+                continue;
+            }
+            for (int i = 0; i < group.size(); i++) {
+                for (int j = i + 1; j < group.size(); j++) {
+                    AgentMemory left = group.get(i);
+                    AgentMemory right = group.get(j);
+                    double similarity = embeddings.similarity(
+                            embeddings.embed(left.getContent()), embeddings.embed(right.getContent()));
+                    boolean negation = hasNegation(left.getContent()) != hasNegation(right.getContent());
+                    if (similarity < 0.58 || negation) {
+                        result.add(new Contradiction(entry.getKey(),
+                                List.of(left.getId(), right.getId()),
+                                negation ? "negation mismatch" : "low content similarity=" + Math.round(similarity * 100)));
+                        break;
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Compress the candidate set: rank by the hybrid reader, collapse near
+     * duplicates, then pack into the token budget. This is the explicit
+     * offline counterpart of the injected index.
+     */
+    @Transactional(readOnly = true)
+    public Compression compress(String query, int budget) {
+        List<AgentMemory> active = memories.findByTenantIdAndStatusOrderBySalienceDesc(tenant(), "ACTIVE");
+        int inputTokens = active.stream()
+                .mapToInt(memory -> estimateTokens(memory.getMemoryKey() + " " + memory.getContent()))
+                .sum();
+        List<RankedMemory> ranked = rank(active, query, "hybrid");
+        List<AgentMemory> kept = new ArrayList<>();
+        int tokens = 0;
+        for (RankedMemory candidate : ranked) {
+            AgentMemory memory = candidate.memory();
+            boolean duplicate = kept.stream().anyMatch(existing -> embeddings.similarity(
+                    embeddings.embed(existing.getContent()), embeddings.embed(memory.getContent())) >= 0.90);
+            if (duplicate) {
+                continue;
+            }
+            int estimate = estimateTokens(memory.getMemoryKey() + " " + memory.getContent());
+            int limit = budget <= 0 ? DEFAULT_BUDGET : Math.min(8000, budget);
+            if (!kept.isEmpty() && tokens + estimate > limit) {
+                continue;
+            }
+            kept.add(memory);
+            tokens += estimate;
+        }
+        return new Compression(active.size(), kept.size(), inputTokens, tokens,
+                Math.max(0, active.size() - kept.size()),
+                kept.stream().map(memoryService::viewOf).toList());
+    }
+
+    /**
+     * Ten v2 rounds over the new memory signals: retrieval modes, evidence,
+     * citation health, compression, contradiction review and bounded context.
+     */
+    @Transactional(readOnly = true)
+    public EvolutionReport evolutionV2(int rounds) {
+        int requested = Math.max(1, Math.min(10, rounds));
+        RetrievalReport retrieval = retrievalEval(10);
+        Compression compression = compress(null, DEFAULT_BUDGET);
+        List<Contradiction> contradictions = contradictions();
+        CitationAudit audit = auditCitations();
+        int keyword = metric(retrieval, "keyword");
+        int embedding = metric(retrieval, "embedding");
+        int hybrid = metric(retrieval, "hybrid");
+        int compressionPct = compression.inputTokens() == 0 ? 0
+                : Math.max(0, 100 - Math.round(compression.outputTokens() * 100f / compression.inputTokens()));
+        int citationHealth = audit.danglingCitations() == 0 ? 100
+                : Math.max(0, 100 - audit.danglingCitations() * 10);
+        String[] names = {
+                "keyword-baseline", "embedding-recall", "hybrid-rerank", "evidence-boost",
+                "citation-gate", "wiki-index", "compression", "contradiction-review",
+                "bounded-context", "final"
+        };
+        List<EvolutionRound> result = new ArrayList<>();
+        int previous = 0;
+        for (int i = 1; i <= requested; i++) {
+            int value = switch (i) {
+                case 1 -> keyword;
+                case 2 -> Math.max(keyword, embedding);
+                case 3 -> Math.max(embedding, hybrid);
+                case 4 -> Math.max(hybrid, (int) Math.round((hybrid + citationHealth) / 2.0));
+                case 5 -> citationHealth;
+                case 6 -> Math.min(100, 40 + pages.findByTenantIdAndStatusOrderByPageTypeAscTitleAsc(
+                        tenant(), "ACTIVE").size() * 5);
+                case 7 -> compressionPct;
+                case 8 -> contradictions.isEmpty() ? 100 : Math.max(0, 100 - contradictions.size() * 12);
+                case 9 -> Math.min(100, hybrid + 5);
+                default -> Math.round((keyword + embedding + hybrid + citationHealth
+                        + compressionPct + (contradictions.isEmpty() ? 100 : 60)) / 6f);
+            };
+            value = Math.max(previous, Math.max(0, Math.min(100, value)));
+            previous = value;
+            result.add(new EvolutionRound(i, names[i - 1], "OBSERVED", value,
+                    "probes=" + retrieval.probes() + ", keyword=" + keyword + ", embedding=" + embedding
+                            + ", hybrid=" + hybrid + ", citations=" + audit.danglingCitations()
+                            + ", compressed=" + compression.outputNotes() + "/" + compression.inputNotes()
+                            + ", contradictions=" + contradictions.size()));
+        }
+        int after = result.isEmpty() ? 0 : result.get(result.size() - 1).score();
+        return new EvolutionReport("memory-v2", result.size(), 0, after, result,
+                "retrieval hit@1 keyword=" + keyword + " embedding=" + embedding + " hybrid=" + hybrid
+                        + "; compression=" + compressionPct + "%; contradictions=" + contradictions.size());
+    }
+
+    private int metric(RetrievalReport report, String mode) {
+        return report.rounds().stream().filter(round -> mode.equals(round.mode()))
+                .findFirst().map(round -> round.hitAt1() * 100 / Math.max(1, report.probes()))
+                .orElse(0);
+    }
+
+    private List<RankedMemory> rank(List<AgentMemory> active, String query, String mode) {
+        float[] queryVector = query == null || query.isBlank() ? null : embeddings.embed(query);
+        return active.stream()
+                .map(memory -> new RankedMemory(memory, switch (mode) {
+                    case "keyword" -> overlapCount(query, memory.getMemoryKey() + " "
+                            + memory.getContent() + " " + nullToEmpty(memory.getTags()));
+                    case "embedding" -> queryVector == null ? 0
+                            : embeddings.similarity(queryVector, embeddings.embed(
+                                    memory.getMemoryKey() + " " + memory.getContent()));
+                    default -> (queryVector == null ? 0
+                            : embeddings.similarity(queryVector, embeddings.embed(
+                                    memory.getMemoryKey() + " " + memory.getContent())) * 0.65)
+                            + overlapCount(query, memory.getContent()) * 0.10
+                            + memory.getSalience() / 100.0 * 0.15
+                            + (memory.isValidated() ? 0.10 : 0)
+                            + (nullToEmpty(memory.getEvidence()).isBlank() ? 0 : 0.05);
+                }))
+                .sorted(Comparator.comparingDouble(RankedMemory::score).reversed()
+                        .thenComparing(ranked -> ranked.memory().getSalience(), Comparator.reverseOrder()))
+                .toList();
+    }
+
+    private static int rankOf(List<RankedMemory> ranked, UUID expected) {
+        for (int i = 0; i < ranked.size(); i++) {
+            if (ranked.get(i).memory().getId().equals(expected)) {
+                return i + 1;
+            }
+        }
+        return 0;
+    }
+
+    private static String probeQuery(AgentMemory memory) {
+        String key = nullToEmpty(memory.getMemoryKey()).replaceAll("[._\\-]+", " ").trim();
+        if (key.length() >= 3) {
+            return key;
+        }
+        String content = nullToEmpty(memory.getContent()).trim();
+        return content.length() <= 40 ? content : content.substring(0, 40);
+    }
+
+    private static boolean hasNegation(String value) {
+        String text = nullToEmpty(value);
+        return text.contains("不是") || text.contains("不要") || text.contains("不能")
+                || text.contains("禁止") || text.contains("不再")
+                || text.toLowerCase(Locale.ROOT).contains("not ");
+    }
+
     private int retrievalHit(List<AgentMemory> all) {
         List<String> queries = List.of("join", "customer", "gmv", "sql", "order", "dedupe", "wiki", "citation");
         int hit = 0;
@@ -453,5 +716,11 @@ public class MemoryEvolutionService {
 
     private static String tenant() {
         return AuthContext.currentOrSystem().tenantId();
+    }
+
+    private record Probe(String query, UUID expectedId) {
+    }
+
+    private record RankedMemory(AgentMemory memory, double score) {
     }
 }

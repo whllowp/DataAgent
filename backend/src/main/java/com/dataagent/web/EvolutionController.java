@@ -56,6 +56,30 @@ public class EvolutionController {
         return memory.evolution(count);
     }
 
+    @GetMapping("/memory/retrieval")
+    public MemoryEvolutionService.RetrievalReport retrieval(
+            @RequestParam(required = false, defaultValue = "10") int probes) {
+        return memory.retrievalEval(probes);
+    }
+
+    @GetMapping("/memory/contradictions")
+    public java.util.List<MemoryEvolutionService.Contradiction> contradictions() {
+        return memory.contradictions();
+    }
+
+    @GetMapping("/memory/compress")
+    public MemoryEvolutionService.Compression compress(
+            @RequestParam(required = false, name = "q") String query,
+            @RequestParam(required = false, defaultValue = "1600") int budget) {
+        return memory.compress(query, budget);
+    }
+
+    @GetMapping("/memory/rounds-v2")
+    public MemoryEvolutionService.EvolutionReport memoryRoundsV2(
+            @RequestParam(required = false, defaultValue = "10") int count) {
+        return memory.evolutionV2(count);
+    }
+
     @PostMapping("/semantic/infer-joins")
     public OntologyEvolutionService.JoinInference inferJoins() {
         return ontology.inferJoinsFromHistory();
@@ -76,6 +100,20 @@ public class EvolutionController {
     @GetMapping("/semantic/answerable-v2")
     public OntologyEvolutionService.AnswerabilityV2 answerableV2(@RequestParam(name = "q") String question) {
         return ontology.answerableV2(question);
+    }
+
+    @GetMapping("/semantic/paths")
+    public java.util.List<OntologyEvolutionService.RankedPath> paths(
+            @RequestParam UUID from,
+            @RequestParam UUID to,
+            @RequestParam(required = false, defaultValue = "5") int limit) {
+        return ontology.bestPaths(from, to, limit);
+    }
+
+    @GetMapping("/semantic/rounds-v2")
+    public OntologyEvolutionService.EvolutionReport semanticRoundsV2(
+            @RequestParam(required = false, defaultValue = "10") int count) {
+        return ontology.evolutionV2(count);
     }
 
     @GetMapping("/semantic/lineage")

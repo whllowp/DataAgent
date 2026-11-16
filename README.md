@@ -271,7 +271,7 @@ java -jar backend/target/dataagent-cloud-0.1.0.jar
 ## 开发与测试
 
 ```powershell
-# 后端单元 + 集成测试（44 个）
+# 后端单元 + 集成测试（47 个）
 cd backend
 mvn test
 
@@ -290,7 +290,7 @@ backend/src/main/resources/static/studio/app.js
 dsh-plugin/client.js
 ```
 
-测试覆盖：SQL 守卫、静态规则、计划解析（PostgreSQL/MySQL/H2）、真实 H2 查询、执行计划、知识沉淀、SQL 资产缓存、语义上下文/设计、Ontology 关系、Verified Query 验证、长期记忆强化/提升知识、对话候选抽取/审核、冲突检测、纠错反馈闭环、记忆 dreaming/wiki/注入上下文、ontology 编译/可回答性/血缘映射、查询结果缓存、审计、表级/字段级血缘、ETL/DolphinScheduler 导入与 REST 拉取、目标 schema 字段映射、OpenLineage job/run、RSI 十代演进、PII 脱敏、API Key 角色/ACL/租户、审计导出、OpenAPI 契约、定期同步幂等、运维概览、SRE 基准执行、API Token。
+测试覆盖：SQL 守卫、静态规则、计划解析（PostgreSQL/MySQL/H2）、真实 H2 查询、执行计划、知识沉淀、SQL 资产缓存、语义上下文/设计、Ontology 关系、Verified Query 验证、长期记忆强化/提升知识、对话候选抽取/审核、冲突检测、纠错反馈闭环、记忆 dreaming/wiki/注入上下文、记忆检索评测/矛盾检测/压缩、ontology 编译/可回答性/血缘映射、查询结果缓存、审计、表级/字段级血缘、ETL/DolphinScheduler 导入与 REST 拉取、目标 schema 字段映射、OpenLineage job/run、RSI 十代演进、PII 脱敏、API Key 角色/ACL/租户、审计导出、OpenAPI 契约、定期同步幂等、运维概览、SRE 基准执行、API Token。
 
 定期同步可用临时端口验证，不需要等 30 分钟：
 

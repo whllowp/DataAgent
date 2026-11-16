@@ -155,13 +155,29 @@ GET  /api/evolution/memory/transcripts?q=&limit=10
 GET  /api/evolution/memory/citations
 POST /api/evolution/memory/citations/repair
 GET  /api/evolution/memory/rounds?count=10
+GET  /api/evolution/memory/rounds-v2?count=10
+GET  /api/evolution/memory/retrieval?probes=10
+GET  /api/evolution/memory/contradictions
+GET  /api/evolution/memory/compress?budget=1600
 
 POST /api/evolution/semantic/infer-joins
 GET  /api/evolution/semantic/bridges
+GET  /api/evolution/semantic/paths?from=&to=&limit=5
 GET  /api/evolution/semantic/drift?datasourceId=&schema=
 GET  /api/evolution/semantic/answerable-v2?q=
 GET  /api/evolution/semantic/lineage?table=&column=
 GET  /api/evolution/semantic/rounds?count=10
+GET  /api/evolution/semantic/rounds-v2?count=10
+```
+
+### V2 retrieval and path checks
+
+```text
+memory retrieval: probes=8 hit@1 keyword=8/8 embedding=8/8 hybrid=8/8 MRR=1.0
+memory compress:  8 notes -> 8 notes, 107 -> 107 tokens
+contradictions:   0
+ontology paths:   ranked by average join confidence minus 0.04/hop
+composite joins:  repeated same-pair predicates append `AND` and raise confidence
 ```
 
 ## 6. Verification

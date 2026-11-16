@@ -677,6 +677,14 @@ class DataAgentIntegrationTest {
         assertEquals(10, report.iterations().size());
         assertTrue(report.after() >= report.before());
 
+        var retrieval = memoryEvolution.retrievalEval(10);
+        assertTrue(retrieval.probes() > 0);
+        assertEquals(3, retrieval.rounds().size());
+        assertNotNull(memoryEvolution.contradictions());
+        var compressed = memoryEvolution.compress(null, 1600);
+        assertTrue(compressed.outputTokens() <= 1600);
+        assertEquals(10, memoryEvolution.evolutionV2(10).iterations().size());
+
         assertFalse(memoryEvolution.searchTranscripts("SELECT", 5).isEmpty());
     }
 
@@ -722,6 +730,13 @@ class DataAgentIntegrationTest {
         assertEquals(10, report.rounds());
         assertEquals(10, report.iterations().size());
         assertTrue(report.after() >= report.before());
+
+        var terms = ontologyEvolution.evolutionV2(10);
+        assertEquals(10, terms.rounds());
+        var termRows = ontology.answerable("CUSTOMERS").terms();
+        if (termRows.size() >= 2) {
+            assertNotNull(ontologyEvolution.bestPaths(termRows.get(0).id(), termRows.get(1).id(), 5));
+        }
     }
 
     private AgentMemory testMemory(String key, String content, int importance) {

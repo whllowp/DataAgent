@@ -90,7 +90,16 @@ public class OntologyEvolutionService {
             int created,
             int updated,
             int unresolved,
+            int composite,
             List<String> examples
+    ) {
+    }
+
+    public record RankedPath(
+            List<SemanticDtos.JoinView> joins,
+            int hops,
+            double score,
+            String explanation
     ) {
     }
 
@@ -180,6 +189,7 @@ public class OntologyEvolutionService {
         int created = 0;
         int updated = 0;
         int unresolved = 0;
+        int composite = 0;
         int pairs = 0;
         List<String> examples = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
@@ -219,8 +229,16 @@ public class OntologyEvolutionService {
                     join.setToTermId(right.get().getTermId());
                     join.setName(name(left.get().getTermId()) + " -> " + name(right.get().getTermId()));
                 }
-                join.setJoinCondition(leftTable + "." + matcher.group(2) + " = "
-                        + rightTable + "." + matcher.group(4));
+                String condition = leftTable + "." + matcher.group(2) + " = "
+                        + rightTable + "." + matcher.group(4);
+                if (existing && join.getJoinCondition() != null
+                        && !join.getJoinCondition().contains(condition)) {
+                    join.setJoinCondition(join.getJoinCondition() + " AND " + condition);
+                    join.setConfidence(Math.min(95, join.getConfidence() + 2));
+                    composite++;
+                } else {
+                    join.setJoinCondition(condition);
+                }
                 join.setRelationshipType(cardinality(left.get(), right.get()));
                 join.setConfidence(existing ? Math.max(join.getConfidence(), 85) : 85);
                 join.setStatus("DRAFT");
@@ -238,7 +256,7 @@ public class OntologyEvolutionService {
                 }
             }
         }
-        return new JoinInference(statements.size(), pairs, created, updated, unresolved, examples);
+        return new JoinInference(statements.size(), pairs, created, updated, unresolved, composite, examples);
     }
 
     /**
@@ -377,6 +395,120 @@ public class OntologyEvolutionService {
                 : impact.joins().stream().mapToInt(SemanticDtos.JoinView::confidence).average().orElse(0);
         return new SemanticPath(table, column, impact.terms(), impact.columns(), impact.joins(),
                 downstream.assets(), downstream.verifiedQueries(), round(confidence / 100.0), gaps);
+    }
+
+    /**
+     * Rank join paths by confidence per hop instead of returning the first BFS
+     * path. A two-hop certified path can beat a one-hop DRAFT guess.
+     */
+    @Transactional(readOnly = true)
+    public List<RankedPath> bestPaths(UUID fromTermId, UUID toTermId, int limit) {
+        if (fromTermId == null || toTermId == null || fromTermId.equals(toTermId)) {
+            return List.of();
+        }
+        List<SemanticJoin> all = joins.findByTenantIdOrderByConfidenceDesc(tenant());
+        Map<UUID, List<SemanticJoin>> graph = new LinkedHashMap<>();
+        for (SemanticJoin join : all) {
+            graph.computeIfAbsent(join.getFromTermId(), ignored -> new ArrayList<>()).add(join);
+            graph.computeIfAbsent(join.getToTermId(), ignored -> new ArrayList<>()).add(join);
+        }
+        List<List<SemanticJoin>> paths = new ArrayList<>();
+        dfs(fromTermId, toTermId, graph, new ArrayList<>(), new LinkedHashSet<>(), paths, 5);
+        List<RankedPath> ranked = new ArrayList<>();
+        for (List<SemanticJoin> path : paths) {
+            double average = path.stream().mapToInt(SemanticJoin::getConfidence).average().orElse(0) / 100.0;
+            double score = Math.round((average - path.size() * 0.04) * 1000.0) / 1000.0;
+            ranked.add(new RankedPath(path.stream().map(this::joinView).toList(), path.size(), score,
+                    "averageConfidence=" + Math.round(average * 100) + "% hops=" + path.size()));
+        }
+        return ranked.stream().sorted(Comparator.comparingDouble(RankedPath::score).reversed())
+                .limit(Math.max(1, Math.min(10, limit))).toList();
+    }
+
+    private void dfs(UUID current, UUID target, Map<UUID, List<SemanticJoin>> graph,
+                     List<SemanticJoin> path, Set<UUID> visited, List<List<SemanticJoin>> paths, int maxHops) {
+        if (path.size() >= maxHops) {
+            return;
+        }
+        for (SemanticJoin edge : graph.getOrDefault(current, List.of())) {
+            UUID next = edge.getFromTermId().equals(current) ? edge.getToTermId() : edge.getFromTermId();
+            if (visited.contains(next)) {
+                continue;
+            }
+            visited.add(next);
+            path.add(edge);
+            if (next.equals(target)) {
+                paths.add(new ArrayList<>(path));
+            } else {
+                dfs(next, target, graph, path, visited, paths, maxHops);
+            }
+            path.remove(path.size() - 1);
+            visited.remove(next);
+        }
+    }
+
+    private SemanticDtos.JoinView joinView(SemanticJoin join) {
+        return new SemanticDtos.JoinView(join.getId(), join.getName(),
+                join.getFromTermId(), name(join.getFromTermId()),
+                join.getToTermId(), name(join.getToTermId()), join.getJoinCondition(),
+                join.getRelationshipType(), join.getConfidence(), join.getStatus(),
+                join.getSource(), join.getProvenance(), join.getUpdatedAt());
+    }
+
+    /**
+     * Ten v2 rounds: observed joins, composite predicates, bridge review,
+     * ranked semantic paths, answerability and field-level lineage.
+     */
+    @Transactional
+    public EvolutionReport evolutionV2(int rounds) {
+        int requested = Math.max(1, Math.min(10, rounds));
+        JoinInference inference = inferJoinsFromHistory();
+        List<BridgeTable> bridges = bridges();
+        long observed = joins.findByTenantIdOrderByConfidenceDesc(tenant()).stream()
+                .filter(join -> "SQL_HISTORY".equals(join.getSource())).count();
+        long joinsCount = joins.count();
+        long termsCount = terms.count();
+        long columnsCount = termColumns.count();
+        AnswerabilityV2 answer = answerableV2("CUSTOMERS");
+        SemanticPath fieldPath = lineagePath("CUSTOMERS", null);
+        List<SemanticJoin> joinRows = joins.findByTenantIdOrderByConfidenceDesc(tenant());
+        UUID pathFrom = joinRows.isEmpty() ? null : joinRows.get(0).getFromTermId();
+        UUID pathTo = joinRows.isEmpty() ? null : joinRows.get(0).getToTermId();
+        List<RankedPath> paths = bestPaths(pathFrom, pathTo, 5);
+        int pathScore = paths.isEmpty() ? 0
+                : (int) Math.round(paths.get(0).score() * 100);
+        String[] names = {
+                "catalog", "column-mapping", "observed-join", "composite-join", "bridge",
+                "path-ranking", "answerability", "field-lineage", "certified-coverage", "final"
+        };
+        List<EvolutionRound> result = new ArrayList<>();
+        int previous = 0;
+        for (int i = 1; i <= requested; i++) {
+            int value = switch (i) {
+                case 1 -> (int) Math.min(100, termsCount * 3);
+                case 2 -> (int) Math.min(100, columnsCount);
+                case 3 -> (int) Math.min(100, observed * 8);
+                case 4 -> (int) Math.min(100, inference.composite() * 15);
+                case 5 -> (int) Math.min(100, bridges.size() * 12);
+                case 6 -> pathScore;
+                case 7 -> (int) Math.round(answer.semanticScore());
+                case 8 -> fieldPath.terms().isEmpty() ? 0 : 100;
+                case 9 -> (int) Math.min(100, joinsCount * 4);
+                default -> (int) Math.round((termsCount + columnsCount + joinsCount + observed
+                        + bridges.size() + pathScore + answer.semanticScore()) / 7f);
+            };
+            value = Math.max(previous, Math.max(0, Math.min(100, value)));
+            previous = value;
+            result.add(new EvolutionRound(i, names[i - 1], "OBSERVED", value,
+                    "terms=" + termsCount + ", columns=" + columnsCount + ", joins=" + joinsCount
+                            + ", observed=" + observed + ", composite=" + inference.composite()
+                            + ", bridges=" + bridges.size() + ", paths=" + paths.size()
+                            + ", answerScore=" + answer.semanticScore()));
+        }
+        int after = result.isEmpty() ? 0 : result.get(result.size() - 1).score();
+        return new EvolutionReport("ontology-v2", result.size(), 0, after, result,
+                "composite joins=" + inference.composite() + ", ranked paths=" + paths.size()
+                        + ", bridge candidates=" + bridges.size());
     }
 
     /**

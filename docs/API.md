@@ -1272,13 +1272,19 @@ GET  /api/evolution/memory/transcripts?q=&limit=10
 GET  /api/evolution/memory/citations
 POST /api/evolution/memory/citations/repair
 GET  /api/evolution/memory/rounds?count=10
+GET  /api/evolution/memory/rounds-v2?count=10
+GET  /api/evolution/memory/retrieval?probes=10
+GET  /api/evolution/memory/contradictions
+GET  /api/evolution/memory/compress?budget=1600
 
 POST /api/evolution/semantic/infer-joins
 GET  /api/evolution/semantic/bridges
+GET  /api/evolution/semantic/paths?from=&to=&limit=5
 GET  /api/evolution/semantic/drift?datasourceId=&schema=
 GET  /api/evolution/semantic/answerable-v2?q=
 GET  /api/evolution/semantic/lineage?table=&column=
 GET  /api/evolution/semantic/rounds?count=10
+GET  /api/evolution/semantic/rounds-v2?count=10
 ```
 
 `rounds` 返回 10 个可观测迭代（score + detail），`memory/index` 返回 token
