@@ -697,7 +697,12 @@ class DataAgentIntegrationTest {
 
         var retrieval = memoryEvolution.retrievalEval(10);
         assertTrue(retrieval.probes() > 0);
-        assertEquals(3, retrieval.rounds().size());
+        assertEquals(4, retrieval.rounds().size());
+        var accuracy = memoryEvolution.accuracy(10);
+        assertTrue(accuracy.probes() > 0);
+        assertEquals(10, accuracy.rounds().size());
+        assertTrue(accuracy.hybridHitAt1Pct() >= accuracy.salienceHitAt1Pct());
+        assertTrue(accuracy.improvementPct() >= 80.0);
         assertNotNull(memoryEvolution.contradictions());
         var compressed = memoryEvolution.compress(null, 1600);
         assertTrue(compressed.outputTokens() <= 1600);

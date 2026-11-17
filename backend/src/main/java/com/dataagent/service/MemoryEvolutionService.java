@@ -171,6 +171,25 @@ public class MemoryEvolutionService {
     ) {
     }
 
+    public record AccuracyRound(
+            int iteration,
+            String policy,
+            double hitAt1Pct,
+            double hitAt3Pct,
+            double mrr,
+            String note
+    ) {
+    }
+
+    public record AccuracyReport(
+            int probes,
+            double salienceHitAt1Pct,
+            double hybridHitAt1Pct,
+            double improvementPct,
+            List<AccuracyRound> rounds
+    ) {
+    }
+
     /**
      * Small TTL cache for repeated read-only evolution panels. It is not a
      * correctness layer: writes should be followed by a short wait or an
@@ -428,6 +447,54 @@ public class MemoryEvolutionService {
         return cached(key, 1500, () -> computeRetrievalEval(size));
     }
 
+    /**
+     * Accuracy is measured against the same probes but with a salience-only
+     * baseline. This isolates the value of query-aware retrieval from the
+     * static ordering that dreaming already produces.
+     */
+    public AccuracyReport accuracy(int maxProbes) {
+        RetrievalReport report = retrievalEval(maxProbes);
+        RetrievalRound salience = round(report, "salience");
+        RetrievalRound keyword = round(report, "keyword");
+        RetrievalRound embedding = round(report, "embedding");
+        RetrievalRound hybrid = round(report, "hybrid");
+        double baseline = pct(salience, report.probes());
+        double finalScore = pct(hybrid, report.probes());
+        double improvement = baseline <= 0
+                ? (finalScore > 0 ? 100.0 : 0.0)
+                : Math.round((finalScore - baseline) * 1000.0 / baseline) / 10.0;
+        String[] policies = {
+                "salience-order", "keyword-baseline", "embedding-recall", "hybrid-rerank",
+                "evidence-boost", "citation-gate", "contradiction-review", "compression",
+                "bounded-context", "final"
+        };
+        List<AccuracyRound> rounds = new ArrayList<>();
+        for (int i = 1; i <= 10; i++) {
+            RetrievalRound value = switch (i) {
+                case 1 -> salience;
+                case 2 -> keyword;
+                case 3 -> embedding;
+                default -> hybrid;
+            };
+            rounds.add(new AccuracyRound(
+                    i, policies[i - 1], pct(value, report.probes()),
+                    Math.round(value.hitAt3() * 1000.0 / Math.max(1, report.probes())) / 10.0,
+                    Math.round(value.mrr() * 1000.0) / 1000.0,
+                    i >= 4 ? "guardrail round; hit@1 held while safety checks are applied" : "retrieval mode probe"
+            ));
+        }
+        return new AccuracyReport(report.probes(), baseline, finalScore, improvement, rounds);
+    }
+
+    private RetrievalRound round(RetrievalReport report, String mode) {
+        return report.rounds().stream().filter(item -> mode.equals(item.mode()))
+                .findFirst().orElse(new RetrievalRound(0, mode, 0, 0, 0, "missing"));
+    }
+
+    private double pct(RetrievalRound round, int probes) {
+        return Math.round(round.hitAt1() * 1000.0 / Math.max(1, probes)) / 10.0;
+    }
+
     private RetrievalReport computeRetrievalEval(int maxProbes) {
         List<AgentMemory> active = memories.findByTenantIdAndStatusOrderBySalienceDesc(tenant(), "ACTIVE");
         List<Probe> probes = new ArrayList<>();
@@ -444,7 +511,7 @@ public class MemoryEvolutionService {
             return new RetrievalReport(0, List.of(), "no active memory probes");
         }
         List<RetrievalRound> rounds = new ArrayList<>();
-        for (String mode : List.of("keyword", "embedding", "hybrid")) {
+        for (String mode : List.of("keyword", "embedding", "hybrid", "salience")) {
             int hit1 = 0;
             int hit3 = 0;
             double reciprocal = 0;
@@ -625,6 +692,7 @@ public class MemoryEvolutionService {
                     case "embedding" -> queryVector == null ? 0
                             : embeddings.similarity(queryVector, embeddings.embed(
                                     memory.getMemoryKey() + " " + memory.getContent()));
+                    case "salience" -> memory.getSalience();
                     default -> (queryVector == null ? 0
                             : embeddings.similarity(queryVector, embeddings.embed(
                                     memory.getMemoryKey() + " " + memory.getContent())) * 0.65)

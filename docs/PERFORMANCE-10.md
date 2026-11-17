@@ -35,6 +35,25 @@ milliseconds on this machine.
 Aggregate is the sum of the four medians; it is the headline number for this
 workload, not a promise for every endpoint.
 
+### Current-code re-verification
+
+After the accuracy work, the same four endpoints were re-measured on a fresh
+JVM with the same 2-warmup + 8-sample protocol. Raw samples:
+[performance-10-current.json](performance-10-current.json).
+
+| Endpoint | Before | Current | Reduction |
+| --- | ---: | ---: | ---: |
+| memory retrieval | 23.3 | 4.1 | 82.4% |
+| memory rounds-v2 | 27.5 | 4.55 | 83.5% |
+| semantic answerable-v2 | 37.8 | 5.85 | 84.5% |
+| semantic rounds-v2 | 61.1 | 4.2 | 93.1% |
+| **aggregate median** | **149.7** | **18.7** | **87.5%** |
+
+Both runs use the same local H2 demo and warm after two calls; the earlier
+75.4ms row is retained as the historical result for the original perf commit,
+while 18.7ms is the current code. The 40% target is met under either measurement.
+
+
 ## Ten rounds of the performance lab
 
 `GET /api/evolution/perf?rounds=10` clears the embedding cache and the ontology

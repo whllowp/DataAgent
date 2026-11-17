@@ -1,0 +1,22 @@
+﻿[
+    {
+        "Endpoint":  "memory/retrieval?probes=10",
+        "MedianMs":  4.1,
+        "Samples":  "6.7,9,3.9,5.1,4.2,3.6,4,3.3"
+    },
+    {
+        "Endpoint":  "memory/rounds-v2?count=10",
+        "MedianMs":  4.55,
+        "Samples":  "4.5,4.5,5.2,5.5,6.3,4.6,4.5,3.4"
+    },
+    {
+        "Endpoint":  "semantic/answerable-v2?q=CUSTOMERS",
+        "MedianMs":  5.85,
+        "Samples":  "5.2,7.1,5.6,5.6,7.6,6.1,5.1,8.3"
+    },
+    {
+        "Endpoint":  "semantic/rounds-v2?count=10",
+        "MedianMs":  4.1999999999999993,
+        "Samples":  "4.3,4.1,4.6,4.8,4.5,3.7,3.3,3.3"
+    }
+]

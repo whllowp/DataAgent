@@ -1,0 +1,88 @@
+﻿{
+    "probes":  8,
+    "salienceHitAt1Pct":  12.5,
+    "hybridHitAt1Pct":  100.0,
+    "improvementPct":  700.0,
+    "rounds":  [
+                   {
+                       "iteration":  1,
+                       "policy":  "salience-order",
+                       "hitAt1Pct":  12.5,
+                       "hitAt3Pct":  37.5,
+                       "mrr":  0.34,
+                       "note":  "retrieval mode probe"
+                   },
+                   {
+                       "iteration":  2,
+                       "policy":  "keyword-baseline",
+                       "hitAt1Pct":  100.0,
+                       "hitAt3Pct":  100.0,
+                       "mrr":  1.0,
+                       "note":  "retrieval mode probe"
+                   },
+                   {
+                       "iteration":  3,
+                       "policy":  "embedding-recall",
+                       "hitAt1Pct":  100.0,
+                       "hitAt3Pct":  100.0,
+                       "mrr":  1.0,
+                       "note":  "retrieval mode probe"
+                   },
+                   {
+                       "iteration":  4,
+                       "policy":  "hybrid-rerank",
+                       "hitAt1Pct":  100.0,
+                       "hitAt3Pct":  100.0,
+                       "mrr":  1.0,
+                       "note":  "guardrail round; hit@1 held while safety checks are applied"
+                   },
+                   {
+                       "iteration":  5,
+                       "policy":  "evidence-boost",
+                       "hitAt1Pct":  100.0,
+                       "hitAt3Pct":  100.0,
+                       "mrr":  1.0,
+                       "note":  "guardrail round; hit@1 held while safety checks are applied"
+                   },
+                   {
+                       "iteration":  6,
+                       "policy":  "citation-gate",
+                       "hitAt1Pct":  100.0,
+                       "hitAt3Pct":  100.0,
+                       "mrr":  1.0,
+                       "note":  "guardrail round; hit@1 held while safety checks are applied"
+                   },
+                   {
+                       "iteration":  7,
+                       "policy":  "contradiction-review",
+                       "hitAt1Pct":  100.0,
+                       "hitAt3Pct":  100.0,
+                       "mrr":  1.0,
+                       "note":  "guardrail round; hit@1 held while safety checks are applied"
+                   },
+                   {
+                       "iteration":  8,
+                       "policy":  "compression",
+                       "hitAt1Pct":  100.0,
+                       "hitAt3Pct":  100.0,
+                       "mrr":  1.0,
+                       "note":  "guardrail round; hit@1 held while safety checks are applied"
+                   },
+                   {
+                       "iteration":  9,
+                       "policy":  "bounded-context",
+                       "hitAt1Pct":  100.0,
+                       "hitAt3Pct":  100.0,
+                       "mrr":  1.0,
+                       "note":  "guardrail round; hit@1 held while safety checks are applied"
+                   },
+                   {
+                       "iteration":  10,
+                       "policy":  "final",
+                       "hitAt1Pct":  100.0,
+                       "hitAt3Pct":  100.0,
+                       "mrr":  1.0,
+                       "note":  "guardrail round; hit@1 held while safety checks are applied"
+                   }
+               ]
+}

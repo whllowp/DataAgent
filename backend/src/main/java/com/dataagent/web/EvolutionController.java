@@ -66,6 +66,12 @@ public class EvolutionController {
         return memory.retrievalEval(probes);
     }
 
+    @GetMapping("/memory/accuracy")
+    public MemoryEvolutionService.AccuracyReport accuracy(
+            @RequestParam(required = false, defaultValue = "10") int probes) {
+        return memory.accuracy(probes);
+    }
+
     @GetMapping("/memory/contradictions")
     public java.util.List<MemoryEvolutionService.Contradiction> contradictions() {
         return memory.contradictions();

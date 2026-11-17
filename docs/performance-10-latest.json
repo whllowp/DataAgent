@@ -1,0 +1,44 @@
+﻿{
+    "rounds":  10,
+    "operations":  [
+                       {
+                           "operation":  "memory.retrieval+compress",
+                           "coldMs":  12.8,
+                           "warmMedianMs":  0.2,
+                           "p95Ms":  0.5,
+                           "improvementPct":  98.4,
+                           "roundsMs":  [
+                                            0.4,
+                                            0.2,
+                                            0.2,
+                                            0.3,
+                                            0.2,
+                                            0.2,
+                                            0.2,
+                                            0.2,
+                                            0.2,
+                                            0.5
+                                        ]
+                       },
+                       {
+                           "operation":  "ontology.answerable+paths",
+                           "coldMs":  53.2,
+                           "warmMedianMs":  1.7,
+                           "p95Ms":  2.2,
+                           "improvementPct":  96.9,
+                           "roundsMs":  [
+                                            2.2,
+                                            2.2,
+                                            1.8,
+                                            1.7,
+                                            1.5,
+                                            1.6,
+                                            1.4,
+                                            1.7,
+                                            1.8,
+                                            1.3
+                                        ]
+                       }
+                   ],
+    "note":  "cold sample clears caches; rounds are consecutive; improvement compares cold to last-3 median"
+}

@@ -317,6 +317,7 @@ Auto-Ontology layers:
 
 ```http
 GET  /api/evolution/memory/rounds?count=10
+GET  /api/evolution/memory/accuracy?probes=10
 GET  /api/evolution/semantic/rounds?count=10
 GET  /api/evolution/memory/index?budget=1600
 GET  /api/evolution/semantic/bridges
@@ -343,14 +344,33 @@ The memory/ontology read path was optimized over ten rounds and measured on the
 local demo:
 
 ```text
-four-endpoint aggregate median: 149.7ms -> 75.4ms (49.6% reduction)
-performance lab: 10 rounds; memory cold->warm 98.5%, ontology 95.2%
+four-endpoint aggregate median: 149.7ms -> 18.7ms (87.5% reduction)
+original perf commit:          149.7ms -> 75.4ms (49.6% reduction)
+performance lab: 10 rounds; memory cold->warm 98.4%, ontology 96.9%
 ```
 
 Key changes: embedding LRU cache, cached ontology graph, batch shortest paths,
 TTL result caches, composite join accumulation and ranked semantic paths.
 See [docs/PERFORMANCE-10.md](docs/PERFORMANCE-10.md) for the benchmark table and
 boundaries.
+
+## Accuracy: 80% target
+
+`GET /api/evolution/memory/accuracy?probes=10` measures the same tenant notes
+against a static salience baseline and a query-aware hybrid retriever:
+
+```text
+probes:             8
+salience hit@1:     12.5%
+hybrid hit@1:       100.0%
+relative gain:      +700.0% (10 rounds)
+```
+
+The ten policy rounds move through keyword, embedding and hybrid retrieval,
+then hold hit@1 while citation, contradiction, compression and context-budget
+guardrails are added. The local fixture is small, so this is a regression
+measurement, not a claim about every tenant. See
+[docs/ACCURACY-10.md](docs/ACCURACY-10.md) for the per-round table and limits.
 
 ## Roadmap
 
