@@ -389,7 +389,49 @@ X-User-Id: zhangsan
 
 `204 No Content`。
 
-## 7. SQL 资产缓存
+### `POST /api/knowledge/accumulate`
+
+触发长期知识库累积（也可由每日 `@Scheduled` cron 自动触发）：
+
+```json
+{"minFrequency": 3, "trigger": "MANUAL"}
+```
+
+- 把出现次数 ≥ `minFrequency` 的高频成功 SQL 指纹自动提升为知识条目（标题取 problem 或 `SQL: ...`，自动带 tags、dialect、耗时、作者、sourceQueryId），并把对应执行记录标记为 solved + 关联 knowledgeId。
+- 对知识条目按规范化 SQL（去空白、小写）去重合并：保留 usageCount 最高（其次最新）的条目，把重复条目的 usageCount 合并进去后删除。
+- 返回 `{runId, trigger, minFrequency, promoted, merged, deduped, totalKnowledge, createdAt}`，并落库 `knowledge_accumulation_run`。
+
+## 7. 数据导出
+
+### `POST /api/export`
+
+只读 SQL 结果导出为可下载文件（`csv` / `json` / `jsonl`）：
+
+```json
+{"datasourceId":"...","sql":"SELECT ...","format":"csv","maxRows":5000,"allowRisky":false}
+```
+
+- 复用查询网关（SQL guard、风险拦截、PII 脱敏、超时、熔断、并发配额），导出行即查询界面展示的脱敏行。
+- 写文件到 `dataagent.export.export-dir`（默认 `./data/exports`），文件名 `export-{时间戳}-{指纹前8位}.{ext}`。
+- 返回 `ExportView`（含 `downloadUrl = /api/export/{id}/download`）。
+
+### `GET /api/export`
+
+最近导出记录列表（top 20）。
+
+### `GET /api/export/{id}`
+
+单条导出记录。
+
+### `GET /api/export/{id}/download`
+
+下载导出文件（`Content-Disposition: attachment`，CSV `text/csv` / JSON `application/json`）。
+
+### `GET /api/evolution/export-lab?rounds=10`
+
+十轮性能实验室（导出 + 累积冷/暖对比），返回每项操作的 `coldMs` / `warmMedianMs` / `improvementPct`。
+
+## 9. SQL 资产缓存
 
 ### `GET /api/sql-assets?q=&domain=&datasourceId=&page=0&size=20`
 
@@ -464,7 +506,7 @@ X-User-Id: zhangsan
 
 `204 No Content`。
 
-## 8. 语义层
+## 10. 语义层
 
 ### `GET /api/semantic/overview`
 
@@ -635,7 +677,7 @@ X-User-Id: zhangsan
 }
 ```
 
-## 9. 已验证查询（Verified Queries）
+## 11. 已验证查询（Verified Queries）
 
 人工审核的 Q→SQL，作为语义层的 few-shot 示例和回归基线。
 
@@ -704,7 +746,7 @@ X-User-Id: zhangsan
 
 使用次数 +1，返回最新 view。
 
-## 10. 长期记忆
+## 12. 长期记忆
 
 ### `GET /api/memory?q=&scope=&kind=&status=`
 
@@ -843,7 +885,7 @@ POST /api/memory/candidates/{id}/reject
 }
 ```
 
-## 11. 运维可观测与 SRE 基准
+## 13. 运维可观测与 SRE 基准
 
 ### `GET /api/ops/overview`
 
@@ -921,7 +963,7 @@ Prometheus 指标：
 
 定时执行由 `dataagent.benchmark.sync-*` 控制，默认 1 小时；本地可用 `scripts/verify-benchmark-scheduler.ps1` 验证。
 
-## 12. 优化
+## 14. 优化
 
 ### `POST /api/optimize/analyze`
 
@@ -1073,7 +1115,7 @@ Prometheus 指标：
 }
 ```
 
-## 13. 错误码
+## 15. 错误码
 
 | HTTP | code | 说明 |
 | --- | --- | --- |
@@ -1085,7 +1127,7 @@ Prometheus 指标：
 | 502 | `UPSTREAM_ERROR` | 上游/数据库错误（部分场景返回 200 + status=ERROR） |
 | 500 | `INTERNAL_ERROR` | 未预期异常 |
 
-## 14. 审计、缓存与血缘
+## 16. 审计、缓存与血缘
 
 ### `GET /api/audit`
 
@@ -1158,7 +1200,7 @@ GET /api/audit?actor=alice&action=SQL_EXECUTE&status=ERROR&limit=100&offset=0
 
 `GET /api/audit/export/download?from=&to=` 直接下载 JSONL。`POST /api/audit/purge` 按保留策略清理。
 
-## 15. 安全、PII 与韧性
+## 17. 安全、PII 与韧性
 
 ### `GET /api/auth/me`
 
@@ -1202,7 +1244,7 @@ GET /api/audit?actor=alice&action=SQL_EXECUTE&status=ERROR&limit=100&offset=0
 
 查看并发排队统计：`activeCount`、`queuedCount`、`maxQueueDepth`、`queueWaitTimeoutMs`、`totalRejected`、`avgWaitMs`。
 
-## 16. ETL / DolphinScheduler
+## 18. ETL / DolphinScheduler
 
 ### `POST /api/etl/sync/dolphinscheduler`
 
@@ -1283,7 +1325,7 @@ GET  /api/v1/namespaces/{namespace}/jobs/{job}/runs/{runId}
 - Verified Query
 - `fieldEdges`：ETL/OpenLineage 字段映射
 
-## 17. RSI 自我演进
+## 19. RSI 自我演进
 
 ```http
 GET  /api/rsi/overview
@@ -1307,7 +1349,7 @@ GET  /api/rsi/runs/{id}/pareto
 
 详见 [RSI.md](RSI.md)。
 
-## 18. 记忆分层 / Dreaming
+## 20. 记忆分层 / Dreaming
 
 ```http
 POST /api/memory/dream?trigger=MANUAL
@@ -1320,7 +1362,7 @@ POST /api/memory/{id}/validate
 
 `dream` 会合并/替代冲突 note、用 transcript 校正、重算 salience、生成 wiki/index 和受限注入快照。详见 [MEMORY-HIERARCHY.md](MEMORY-HIERARCHY.md)。
 
-## 19. Auto-Ontology 语义层
+## 21. Auto-Ontology 语义层
 
 ```http
 POST /api/semantic/compile
@@ -1340,7 +1382,7 @@ POST /api/semantic/ontology/joins/{id}/certify
 
 `/api/lineage/impact` 和 `/api/lineage/field-impact` 额外返回 `semanticTerms`、`termColumns`、`sqlAttributes`、`semanticJoins`、`semanticConfidence`、`semanticGaps`。详见 [ONTOLOGY.md](ONTOLOGY.md)。
 
-## 20. 记忆 / Ontology 十轮演进
+## 22. 记忆 / Ontology 十轮演进
 
 ```http
 GET  /api/evolution/memory/index?q=&budget=1600
@@ -1368,7 +1410,7 @@ GET  /api/evolution/perf?rounds=10
 预算内的注入索引，`semantic/drift` 对比实时元数据与已存 term column 映射，
 `semantic/lineage` 组合物理血缘与语义 join。详见 [EVOLUTION-10.md](EVOLUTION-10.md)。
 
-## 21. curl 速查
+## 23. curl 速查
 
 ```bash
 TOKEN=dataagent-dev-token

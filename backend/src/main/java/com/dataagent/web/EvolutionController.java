@@ -1,5 +1,6 @@
 package com.dataagent.web;
 
+import com.dataagent.service.ExportAccumulationLabService;
 import com.dataagent.service.MemoryEvolutionService;
 import com.dataagent.service.OntologyEvolutionService;
 import com.dataagent.service.PerformanceLabService;
@@ -22,12 +23,14 @@ public class EvolutionController {
     private final MemoryEvolutionService memory;
     private final OntologyEvolutionService ontology;
     private final PerformanceLabService performance;
+    private final ExportAccumulationLabService exportLab;
 
     public EvolutionController(MemoryEvolutionService memory, OntologyEvolutionService ontology,
-                               PerformanceLabService performance) {
+                               PerformanceLabService performance, ExportAccumulationLabService exportLab) {
         this.memory = memory;
         this.ontology = ontology;
         this.performance = performance;
+        this.exportLab = exportLab;
     }
 
     @GetMapping("/memory/index")
@@ -130,6 +133,12 @@ public class EvolutionController {
     public PerformanceLabService.Report performance(
             @RequestParam(required = false, defaultValue = "10") int rounds) {
         return performance.run(rounds);
+    }
+
+    @GetMapping("/export-lab")
+    public ExportAccumulationLabService.Report exportLab(
+            @RequestParam(required = false, defaultValue = "10") int rounds) {
+        return exportLab.run(rounds);
     }
 
     @GetMapping("/semantic/lineage")

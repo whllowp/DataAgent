@@ -49,4 +49,21 @@ public interface QueryExecutionRepository extends JpaRepository<QueryExecution, 
 
     @Query("select q.durationMs from QueryExecution q where q.status = 'SUCCESS' order by q.durationMs asc")
     List<Long> allSuccessfulDurations();
+
+    @Query("""
+            select q.sqlFingerprint, count(q)
+            from QueryExecution q
+            where q.status = 'SUCCESS' and q.sqlFingerprint is not null and q.solved = false
+            group by q.sqlFingerprint
+            having count(q) >= :minFrequency
+            order by count(q) desc
+            """)
+    List<Object[]> frequentFingerprints(@Param("minFrequency") long minFrequency);
+
+    @Query("""
+            select q from QueryExecution q
+            where q.sqlFingerprint = :fingerprint and q.status = 'SUCCESS'
+            order by q.createdAt desc
+            """)
+    List<QueryExecution> findByFingerprintOrderByCreatedAtDesc(@Param("fingerprint") String fingerprint);
 }

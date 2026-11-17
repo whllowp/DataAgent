@@ -1,6 +1,7 @@
 package com.dataagent.web;
 
 import com.dataagent.security.ApiTokenFilter;
+import com.dataagent.service.KnowledgeAccumulationService;
 import com.dataagent.service.KnowledgeService;
 import com.dataagent.web.dto.KnowledgeDtos;
 import jakarta.validation.Valid;
@@ -24,9 +25,11 @@ import java.util.UUID;
 public class KnowledgeController {
 
     private final KnowledgeService knowledge;
+    private final KnowledgeAccumulationService accumulation;
 
-    public KnowledgeController(KnowledgeService knowledge) {
+    public KnowledgeController(KnowledgeService knowledge, KnowledgeAccumulationService accumulation) {
         this.knowledge = knowledge;
+        this.accumulation = accumulation;
     }
 
     @GetMapping
@@ -60,6 +63,14 @@ public class KnowledgeController {
     @PostMapping("/{id}/use")
     public KnowledgeDtos.KnowledgeView use(@PathVariable UUID id) {
         return knowledge.markUsed(id);
+    }
+
+    @PostMapping("/accumulate")
+    public KnowledgeDtos.AccumulationResult accumulate(
+            @RequestBody(required = false) KnowledgeDtos.AccumulateRequest request,
+            @RequestAttribute(name = ApiTokenFilter.USER_ATTRIBUTE) String user) {
+        return accumulation.accumulate(request == null ? "MANUAL" : request.trigger(),
+                request == null ? null : request.minFrequency(), user);
     }
 
     @DeleteMapping("/{id}")

@@ -125,6 +125,9 @@ dataagent:
     token: ${DATAAGENT_DS_TOKEN:}
     project-code: ${DATAAGENT_DS_PROJECT_CODE:}
     project-name: ${DATAAGENT_DS_PROJECT_NAME:}
+  export:
+    export-dir: ${DATAAGENT_EXPORT_DIR:./data/exports}
+    max-export-rows: ${DATAAGENT_MAX_EXPORT_ROWS:5000}
 
 logging:
   level:

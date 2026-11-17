@@ -28,7 +28,7 @@ flowchart TB
     direction TB
     Panel["DataAgent SQL 面板<br/>Schema 树 / 编辑器 / 结果 / 历史 / 知识库"]
     DSH["DSH Agent + 大模型"]
-    MCP["MCP stdio bridge<br/>65 个 dataagent_* 工具"]
+    MCP["MCP stdio bridge<br/>69 个 dataagent_* 工具"]
     Panel -->|"HTTPS / REST"| Gateway
     DSH -->|"tool call"| MCP
     MCP -->|"HTTPS / REST"| Gateway

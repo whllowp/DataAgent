@@ -64,7 +64,7 @@
    - 同一个 React 组件也构建为独立页面：`http://127.0.0.1:8080/studio/`
 
 3. **DSH 大模型 + MCP 工具**
-   - **65 个 `dataagent_*` MCP 工具**：列数据源、看表结构、只读执行、取计划、分析、对比、搜知识库、保存知识、标记解决、查历史、看统计，以及 SQL 资产、语义上下文、设计助手、语义沉淀、手动同步、运维概览、SRE 基准、已验证查询、长期记忆、候选审核、反馈闭环、审计、血缘、PII、ETL/DolphinScheduler、OpenLineage、Run 血缘、RSI、记忆 dreaming/context/wiki、ontology 编译/可回答性/join/impact、高危 SQL 评分/改写/十轮优化、会话查看/终止/队列
+   - **69 个 `dataagent_*` MCP 工具**：列数据源、看表结构、只读执行、取计划、分析、对比、搜知识库、保存知识、标记解决、查历史、看统计，以及 SQL 资产、语义上下文、设计助手、语义沉淀、手动同步、运维概览、SRE 基准、已验证查询、长期记忆、候选审核、反馈闭环、审计、血缘、PII、ETL/DolphinScheduler、OpenLineage、Run 血缘、RSI、记忆 dreaming/context/wiki、ontology 编译/可回答性/join/impact、高危 SQL 评分/改写/十轮优化、会话查看/终止/队列、数据导出/导出列表/导出下载、知识库累积
    - 面板生成包含 SQL、真实计划、静态发现和约束的 Prompt
    - 模型可继续调用工具验证，而不是凭空给建议
    - 验证后的结论可回写知识库与语义层
@@ -218,7 +218,7 @@ dataagent/
 │     └─ application.yml
 ├─ studio/                   React + esbuild 源码（独立页 + DSH Client）
 ├─ dsh-plugin/               DSH bundle（client.js 构建生成；patch/icon/locale 入库）
-├─ mcp-server/              零依赖 MCP stdio 工具桥（65 个工具）
+├─ mcp-server/              零依赖 MCP stdio 工具桥（69 个工具）
 ├─ docs/                     架构、API、语义层、DSH 集成
 ├─ scripts/                  构建、运行、冒烟
 ├─ docker-compose.yml
@@ -271,7 +271,7 @@ java -jar backend/target/dataagent-cloud-0.1.0.jar
 ## 开发与测试
 
 ```powershell
-# 后端单元 + 集成测试（66 个）
+# 后端单元 + 集成测试（74 个）
 cd backend
 mvn test
 

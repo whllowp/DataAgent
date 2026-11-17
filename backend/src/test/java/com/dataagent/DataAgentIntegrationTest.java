@@ -9,11 +9,13 @@ import com.dataagent.repository.KnowledgeEntryRepository;
 import com.dataagent.repository.QueryExecutionRepository;
 import com.dataagent.service.HistoryService;
 import com.dataagent.service.JdbcQueryService;
+import com.dataagent.service.KnowledgeAccumulationService;
 import com.dataagent.service.OptimizationService;
 import com.dataagent.service.OpsService;
 import com.dataagent.service.ApiKeyService;
 import com.dataagent.service.AuditExportService;
 import com.dataagent.service.BenchmarkService;
+import com.dataagent.service.DataExportService;
 import com.dataagent.service.DolphinSchedulerClient;
 import com.dataagent.service.EtlService;
 import com.dataagent.service.FieldMappingParser;
@@ -48,6 +50,7 @@ import com.dataagent.web.dto.AuditDtos;
 import com.dataagent.web.dto.BenchmarkDtos;
 import com.dataagent.web.dto.DolphinSchedulerDtos;
 import com.dataagent.web.dto.EtlDtos;
+import com.dataagent.web.dto.ExportDtos;
 import com.dataagent.web.dto.FeedbackDtos;
 import com.dataagent.web.dto.HistoryDtos;
 import com.dataagent.web.dto.MemoryCandidateDtos;
@@ -176,6 +179,10 @@ class DataAgentIntegrationTest {
     private QuerySessionRegistry sessionRegistry;
     @Autowired
     private QueryConcurrencyLimiter limiter;
+    @Autowired
+    private DataExportService dataExports;
+    @Autowired
+    private KnowledgeAccumulationService knowledgeAccumulation;
     @Autowired
     private MockMvc mockMvc;
 
@@ -881,5 +888,55 @@ class DataAgentIntegrationTest {
                 .andExpect(jsonPath("$.maxQueueDepth").exists());
         mockMvc.perform(get("/api/ops/sessions").header("X-API-Key", "test-token"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void exportsQueryToDownloadableFile() throws Exception {
+        ExportDtos.ExportView view = dataExports.export(new ExportDtos.ExportRequest(
+                demo.getId(), "SELECT id, name, city FROM customers LIMIT 50", "csv", 100, false), "tester");
+        assertEquals("SUCCESS", view.status());
+        assertTrue(view.rowCount() > 0);
+        assertTrue(view.byteSize() > 0);
+
+        mockMvc.perform(get("/api/export/" + view.id() + "/download").header("X-API-Key", "test-token"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("text/csv; charset=UTF-8"));
+    }
+
+    @Test
+    void exportEndpointReturnsCreated() throws Exception {
+        mockMvc.perform(post("/api/export")
+                        .header("X-API-Key", "test-token")
+                        .contentType("application/json")
+                        .content("{\"datasourceId\":\"" + demo.getId()
+                                + "\",\"sql\":\"SELECT id, city FROM customers LIMIT 20\",\"format\":\"csv\",\"maxRows\":50}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.rowCount").value(20));
+    }
+
+    @Test
+    void accumulatePromotesFrequentQueriesAndDedupes() throws Exception {
+        String sql = "SELECT city, COUNT(*) AS c FROM customers GROUP BY city";
+        for (int i = 0; i < 3; i++) {
+            queries.execute(demo.getId(), sql, 10, 5, false, "test", "cities", "accum");
+        }
+        mockMvc.perform(post("/api/knowledge/accumulate")
+                        .header("X-API-Key", "test-token")
+                        .contentType("application/json")
+                        .content("{\"minFrequency\":2,\"trigger\":\"MANUAL\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.promoted").exists())
+                .andExpect(jsonPath("$.deduped").exists())
+                .andExpect(jsonPath("$.totalKnowledge").exists());
+    }
+
+    @Test
+    void exportLabReportsOperations() throws Exception {
+        mockMvc.perform(get("/api/evolution/export-lab").param("rounds", "3")
+                        .header("X-API-Key", "test-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.operations").isArray())
+                .andExpect(jsonPath("$.rounds").value(3));
     }
 }

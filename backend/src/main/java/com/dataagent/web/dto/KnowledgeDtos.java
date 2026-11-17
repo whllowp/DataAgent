@@ -1,5 +1,7 @@
 package com.dataagent.web.dto;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -50,6 +52,24 @@ public final class KnowledgeDtos {
             Long afterDurationMs,
             @Size(max = 120) String author,
             UUID sourceQueryId
+    ) {
+    }
+
+    public record AccumulateRequest(
+            @Min(1) @Max(1000) Integer minFrequency,
+            @Size(max = 20) String trigger
+    ) {
+    }
+
+    public record AccumulationResult(
+            UUID runId,
+            String trigger,
+            int minFrequency,
+            int promoted,
+            int merged,
+            int deduped,
+            int totalKnowledge,
+            Instant createdAt
     ) {
     }
 }

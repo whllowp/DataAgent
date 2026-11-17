@@ -18,6 +18,7 @@ public class DataAgentProperties {
     private final Resilience resilience = new Resilience();
     private final Audit audit = new Audit();
     private final DolphinScheduler dolphinscheduler = new DolphinScheduler();
+    private final Export export = new Export();
 
     public Security getSecurity() {
         return security;
@@ -61,6 +62,31 @@ public class DataAgentProperties {
 
     public DolphinScheduler getDolphinscheduler() {
         return dolphinscheduler;
+    }
+
+    public Export getExport() {
+        return export;
+    }
+
+    public static class Export {
+        private String exportDir = "./data/exports";
+        private int maxExportRows = 5000;
+
+        public String getExportDir() {
+            return exportDir;
+        }
+
+        public void setExportDir(String exportDir) {
+            this.exportDir = exportDir;
+        }
+
+        public int getMaxExportRows() {
+            return maxExportRows;
+        }
+
+        public void setMaxExportRows(int maxExportRows) {
+            this.maxExportRows = maxExportRows;
+        }
     }
 
     public static class DolphinScheduler {

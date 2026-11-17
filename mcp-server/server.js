@@ -1092,6 +1092,70 @@ const tools = [
     annotations: { readOnlyHint: true },
     handler: () => api('/api/ops/queue'),
   },
+  {
+    name: 'dataagent_export',
+    description: '执行只读 SQL 并将结果导出为可下载文件（CSV/JSON/JSONL）。返回导出记录（文件名、行数、大小、下载地址）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        datasourceId: { type: 'string', description: '数据源 UUID；省略时使用第一个数据源' },
+        sql: { type: 'string', description: '只读 SQL' },
+        format: { type: 'string', enum: ['csv', 'json', 'jsonl'], default: 'csv' },
+        maxRows: { type: 'integer', minimum: 1, maximum: 5000, description: '导出最大行数（默认受服务端上限约束）' },
+        allowRisky: { type: 'boolean', description: '显式允许高危 SQL（覆盖风险拦截）' },
+      },
+      required: ['sql'],
+      additionalProperties: false,
+    },
+    handler: async (args) => {
+      const datasourceId = args.datasourceId || await firstDatasourceId();
+      return api('/api/export', {
+        method: 'POST',
+        body: {
+          datasourceId,
+          sql: args.sql,
+          format: args.format || 'csv',
+          maxRows: args.maxRows,
+          allowRisky: args.allowRisky,
+        },
+      });
+    },
+  },
+  {
+    name: 'dataagent_export_list',
+    description: '列出最近的导出记录（文件名、格式、行数、大小、状态、下载地址）。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    handler: () => api('/api/export'),
+  },
+  {
+    name: 'dataagent_export_download',
+    description: '获取某个导出记录的详情与下载地址（downloadUrl）。',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: '导出记录 UUID' } },
+      required: ['id'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => api(`/api/export/${encodeURIComponent(args.id)}`),
+  },
+  {
+    name: 'dataagent_knowledge_accumulate',
+    description: '触发长期知识库累积：把高频成功 SQL 自动提升为知识条目并对重复条目去重合并，返回提升/合并/去重统计。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        minFrequency: { type: 'integer', minimum: 1, maximum: 1000, default: 3, description: 'SQL 指纹最小出现次数才提升' },
+        trigger: { type: 'string', description: '触发来源（MANUAL/SCHEDULED/LAB）' },
+      },
+      additionalProperties: false,
+    },
+    handler: (args) => api('/api/knowledge/accumulate', {
+      method: 'POST',
+      body: { minFrequency: args.minFrequency || 3, trigger: args.trigger || 'MANUAL' },
+    }),
+  },
 ];
 
 async function firstDatasourceId() {
