@@ -29,6 +29,7 @@ import com.dataagent.service.MemoryEvolutionService;
 import com.dataagent.service.MemoryService;
 import com.dataagent.service.OntologyEvolutionService;
 import com.dataagent.service.OntologyService;
+import com.dataagent.service.PerformanceLabService;
 import com.dataagent.service.PiiService;
 import com.dataagent.service.QueryResultCache;
 import com.dataagent.service.RsiService;
@@ -124,6 +125,8 @@ class DataAgentIntegrationTest {
     private MemoryEvolutionService memoryEvolution;
     @Autowired
     private OntologyEvolutionService ontologyEvolution;
+    @Autowired
+    private PerformanceLabService performanceLab;
     @Autowired
     private OntologyService ontology;
     @Autowired
@@ -703,6 +706,18 @@ class DataAgentIntegrationTest {
         AgentMemory reloaded = memoryRepository.findById(memory.getId()).orElseThrow();
         assertTrue(reloaded.isValidated());
         assertTrue(reloaded.getEvidence().contains("citations-verified=1"));
+    }
+
+    @Test
+    void performanceLabRunsTenRounds() {
+        PerformanceLabService.Report report = performanceLab.run(10);
+        assertEquals(10, report.rounds());
+        assertEquals(2, report.operations().size());
+        report.operations().forEach(operation -> {
+            assertEquals(10, operation.roundsMs().size());
+            assertTrue(operation.coldMs() >= 0);
+            assertTrue(operation.improvementPct() >= 0);
+        });
     }
 
     @Test

@@ -55,6 +55,7 @@ public class MemoryEvolutionService {
     private final QueryExecutionRepository transcripts;
     private final MemoryService memoryService;
     private final EmbeddingService embeddings;
+    private final Map<String, CacheEntry> resultCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     public MemoryEvolutionService(AgentMemoryRepository memories, MemoryWikiPageRepository pages,
                                   QueryExecutionRepository transcripts, MemoryService memoryService,
@@ -168,6 +169,31 @@ public class MemoryEvolutionService {
             int dropped,
             List<MemoryDtos.MemoryView> notes
     ) {
+    }
+
+    /**
+     * Small TTL cache for repeated read-only evolution panels. It is not a
+     * correctness layer: writes should be followed by a short wait or an
+     * explicit cache clear.
+     */
+    public void clearCaches() {
+        resultCache.clear();
+    }
+
+    private <T> T cached(String key, long ttlMs, java.util.function.Supplier<T> loader) {
+        long now = System.currentTimeMillis();
+        CacheEntry entry = resultCache.get(key);
+        if (entry != null && entry.expiresAt() > now) {
+            @SuppressWarnings("unchecked")
+            T value = (T) entry.value();
+            return value;
+        }
+        T value = loader.get();
+        resultCache.put(key, new CacheEntry(value, now + ttlMs));
+        return value;
+    }
+
+    private record CacheEntry(Object value, long expiresAt) {
     }
 
     /**
@@ -324,6 +350,7 @@ public class MemoryEvolutionService {
             }
         }
         memories.saveAll(active);
+        clearCaches();
         return new CitationRepair(active.size(), validated, degraded, dangling);
     }
 
@@ -396,6 +423,12 @@ public class MemoryEvolutionService {
      */
     @Transactional(readOnly = true)
     public RetrievalReport retrievalEval(int maxProbes) {
+        int size = Math.max(1, Math.min(10, maxProbes));
+        String key = "retrieval:" + tenant() + ":" + size;
+        return cached(key, 1500, () -> computeRetrievalEval(size));
+    }
+
+    private RetrievalReport computeRetrievalEval(int maxProbes) {
         List<AgentMemory> active = memories.findByTenantIdAndStatusOrderBySalienceDesc(tenant(), "ACTIVE");
         List<Probe> probes = new ArrayList<>();
         for (AgentMemory memory : active) {
@@ -441,6 +474,11 @@ public class MemoryEvolutionService {
      */
     @Transactional(readOnly = true)
     public List<Contradiction> contradictions() {
+        String key = "contradictions:" + tenant();
+        return cached(key, 1500, this::computeContradictions);
+    }
+
+    private List<Contradiction> computeContradictions() {
         List<AgentMemory> active = memories.findByTenantIdAndStatusOrderBySalienceDesc(tenant(), "ACTIVE");
         Map<String, List<AgentMemory>> groups = new LinkedHashMap<>();
         for (AgentMemory memory : active) {
@@ -480,6 +518,12 @@ public class MemoryEvolutionService {
      */
     @Transactional(readOnly = true)
     public Compression compress(String query, int budget) {
+        String normalizedQuery = query == null ? "" : query.trim();
+        String key = "compress:" + tenant() + ":" + normalizedQuery + ":" + budget;
+        return cached(key, 1500, () -> computeCompress(normalizedQuery, budget));
+    }
+
+    private Compression computeCompress(String query, int budget) {
         List<AgentMemory> active = memories.findByTenantIdAndStatusOrderBySalienceDesc(tenant(), "ACTIVE");
         int inputTokens = active.stream()
                 .mapToInt(memory -> estimateTokens(memory.getMemoryKey() + " " + memory.getContent()))
@@ -514,6 +558,11 @@ public class MemoryEvolutionService {
     @Transactional(readOnly = true)
     public EvolutionReport evolutionV2(int rounds) {
         int requested = Math.max(1, Math.min(10, rounds));
+        String key = "evolution-v2:" + tenant() + ":" + requested;
+        return cached(key, 1500, () -> computeEvolutionV2(requested));
+    }
+
+    private EvolutionReport computeEvolutionV2(int requested) {
         RetrievalReport retrieval = retrievalEval(10);
         Compression compression = compress(null, DEFAULT_BUDGET);
         List<Contradiction> contradictions = contradictions();

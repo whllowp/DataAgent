@@ -2,6 +2,7 @@ package com.dataagent.web;
 
 import com.dataagent.service.MemoryEvolutionService;
 import com.dataagent.service.OntologyEvolutionService;
+import com.dataagent.service.PerformanceLabService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,10 +21,13 @@ public class EvolutionController {
 
     private final MemoryEvolutionService memory;
     private final OntologyEvolutionService ontology;
+    private final PerformanceLabService performance;
 
-    public EvolutionController(MemoryEvolutionService memory, OntologyEvolutionService ontology) {
+    public EvolutionController(MemoryEvolutionService memory, OntologyEvolutionService ontology,
+                               PerformanceLabService performance) {
         this.memory = memory;
         this.ontology = ontology;
+        this.performance = performance;
     }
 
     @GetMapping("/memory/index")
@@ -114,6 +118,12 @@ public class EvolutionController {
     public OntologyEvolutionService.EvolutionReport semanticRoundsV2(
             @RequestParam(required = false, defaultValue = "10") int count) {
         return ontology.evolutionV2(count);
+    }
+
+    @GetMapping("/perf")
+    public PerformanceLabService.Report performance(
+            @RequestParam(required = false, defaultValue = "10") int rounds) {
+        return performance.run(rounds);
     }
 
     @GetMapping("/semantic/lineage")

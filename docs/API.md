@@ -1285,6 +1285,7 @@ GET  /api/evolution/semantic/answerable-v2?q=
 GET  /api/evolution/semantic/lineage?table=&column=
 GET  /api/evolution/semantic/rounds?count=10
 GET  /api/evolution/semantic/rounds-v2?count=10
+GET  /api/evolution/perf?rounds=10
 ```
 
 `rounds` 返回 10 个可观测迭代（score + detail），`memory/index` 返回 token

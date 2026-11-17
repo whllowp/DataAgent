@@ -337,6 +337,21 @@ lineage:  semanticJoins=3 confidence=0.783 gaps=2
 See [docs/EVOLUTION-10.md](docs/EVOLUTION-10.md) for the round-by-round tables
 and boundaries.
 
+## Performance: 40% target
+
+The memory/ontology read path was optimized over ten rounds and measured on the
+local demo:
+
+```text
+four-endpoint aggregate median: 149.7ms -> 75.4ms (49.6% reduction)
+performance lab: 10 rounds; memory cold->warm 98.5%, ontology 95.2%
+```
+
+Key changes: embedding LRU cache, cached ontology graph, batch shortest paths,
+TTL result caches, composite join accumulation and ranked semantic paths.
+See [docs/PERFORMANCE-10.md](docs/PERFORMANCE-10.md) for the benchmark table and
+boundaries.
+
 ## Roadmap
 
 | 阶段 | 内容 |

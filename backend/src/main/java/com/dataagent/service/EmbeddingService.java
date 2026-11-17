@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
@@ -20,8 +21,29 @@ public class EmbeddingService {
     private static final int DIMENSION = 256;
     private static final int MAX_RECALL = 20;
     private static final double MIN_SCORE = 0.06;
+    private static final int CACHE_LIMIT = 4096;
+    private final ConcurrentHashMap<String, float[]> cache = new ConcurrentHashMap<>();
 
     public float[] embed(String text) {
+        String key = text == null ? "" : text;
+        float[] cached = cache.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        float[] vector = compute(text);
+        if (cache.size() >= CACHE_LIMIT) {
+            cache.clear();
+        }
+        cache.putIfAbsent(key, vector);
+        return vector;
+    }
+
+    /** Drop cached vectors when a caller wants a cold measurement. */
+    public void clearCache() {
+        cache.clear();
+    }
+
+    private float[] compute(String text) {
         float[] vector = new float[DIMENSION];
         if (text == null || text.isBlank()) {
             return vector;

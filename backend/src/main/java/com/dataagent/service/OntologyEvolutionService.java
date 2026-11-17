@@ -68,6 +68,8 @@ public class OntologyEvolutionService {
     private final VerifiedQueryRepository verifiedQueries;
     private final MetadataService metadata;
     private final LineageService lineage;
+    private volatile GraphCache graphCache;
+    private final Map<String, CacheEntry> resultCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     public OntologyEvolutionService(OntologyService ontology, SemanticTermRepository terms,
                                     SemanticTermColumnRepository termColumns,
@@ -256,7 +258,95 @@ public class OntologyEvolutionService {
                 }
             }
         }
+        clearCaches();
         return new JoinInference(statements.size(), pairs, created, updated, unresolved, composite, examples);
+    }
+
+    /** Drop the in-process join graph so the next read pays the cold cost. */
+    public void clearGraphCache() {
+        graphCache = null;
+    }
+
+    /** Drop graph and read-result caches together. */
+    public void clearCaches() {
+        graphCache = null;
+        resultCache.clear();
+    }
+
+    private <T> T cached(String key, long ttlMs, java.util.function.Supplier<T> loader) {
+        long now = System.currentTimeMillis();
+        CacheEntry entry = resultCache.get(key);
+        if (entry != null && entry.expiresAt() > now) {
+            @SuppressWarnings("unchecked")
+            T value = (T) entry.value();
+            return value;
+        }
+        T value = loader.get();
+        resultCache.put(key, new CacheEntry(value, now + ttlMs));
+        return value;
+    }
+
+    private record CacheEntry(Object value, long expiresAt) {
+    }
+
+    private Map<UUID, List<SemanticJoin>> graph() {
+        String tenant = tenant();
+        long count = joins.count();
+        GraphCache current = graphCache;
+        if (current != null && current.tenant().equals(tenant) && current.joinCount() == count
+                && current.createdAt() > System.currentTimeMillis() - 30_000) {
+            return current.graph();
+        }
+        Map<UUID, List<SemanticJoin>> graph = new LinkedHashMap<>();
+        for (SemanticJoin join : joins.findByTenantIdOrderByConfidenceDesc(tenant)) {
+            graph.computeIfAbsent(join.getFromTermId(), ignored -> new ArrayList<>()).add(join);
+            graph.computeIfAbsent(join.getToTermId(), ignored -> new ArrayList<>()).add(join);
+        }
+        graphCache = new GraphCache(tenant, count, System.currentTimeMillis(), graph);
+        return graph;
+    }
+
+    private List<SemanticJoin> shortestPath(UUID from, UUID to, Map<UUID, List<SemanticJoin>> graph) {
+        if (from == null || to == null || from.equals(to)) {
+            return List.of();
+        }
+        Map<UUID, SemanticJoin> parent = new LinkedHashMap<>();
+        Set<UUID> seen = new LinkedHashSet<>();
+        List<UUID> queue = new ArrayList<>();
+        queue.add(from);
+        seen.add(from);
+        for (int head = 0; head < queue.size(); head++) {
+            UUID current = queue.get(head);
+            if (current.equals(to)) {
+                break;
+            }
+            for (SemanticJoin edge : graph.getOrDefault(current, List.of())) {
+                UUID next = edge.getFromTermId().equals(current) ? edge.getToTermId() : edge.getFromTermId();
+                if (seen.add(next)) {
+                    parent.put(next, edge);
+                    queue.add(next);
+                }
+            }
+        }
+        if (!parent.containsKey(to) && !from.equals(to)) {
+            return List.of();
+        }
+        List<SemanticJoin> path = new ArrayList<>();
+        UUID node = to;
+        while (!node.equals(from)) {
+            SemanticJoin edge = parent.get(node);
+            if (edge == null) {
+                return List.of();
+            }
+            path.add(edge);
+            node = edge.getFromTermId().equals(node) ? edge.getToTermId() : edge.getFromTermId();
+        }
+        java.util.Collections.reverse(path);
+        return path;
+    }
+
+    private record GraphCache(String tenant, long joinCount, long createdAt,
+                              Map<UUID, List<SemanticJoin>> graph) {
     }
 
     /**
@@ -356,21 +446,27 @@ public class OntologyEvolutionService {
      */
     @Transactional(readOnly = true)
     public AnswerabilityV2 answerableV2(String question) {
+        String key = "answer:" + tenant() + ":" + (question == null ? "" : question.trim());
+        return cached(key, 1500, () -> computeAnswerableV2(question));
+    }
+
+    private AnswerabilityV2 computeAnswerableV2(String question) {
         SemanticDtos.Answerability base = ontology.answerable(question);
         List<SemanticDtos.TermView> matched = base.terms();
         List<SemanticDtos.JoinView> paths = new ArrayList<>();
         List<String> missing = new ArrayList<>();
         int pairs = 0;
         int connected = 0;
+        Map<UUID, List<SemanticJoin>> graph = graph();
         for (int i = 0; i < matched.size(); i++) {
             for (int j = i + 1; j < matched.size(); j++) {
                 pairs++;
-                List<SemanticDtos.JoinView> path = ontology.joinPath(matched.get(i).id(), matched.get(j).id());
+                List<SemanticJoin> path = shortestPath(matched.get(i).id(), matched.get(j).id(), graph);
                 if (path.isEmpty()) {
                     missing.add(matched.get(i).term() + " -> " + matched.get(j).term());
                 } else {
                     connected++;
-                    paths.addAll(path);
+                    paths.addAll(path.stream().map(this::joinView).toList());
                 }
             }
         }
@@ -406,12 +502,7 @@ public class OntologyEvolutionService {
         if (fromTermId == null || toTermId == null || fromTermId.equals(toTermId)) {
             return List.of();
         }
-        List<SemanticJoin> all = joins.findByTenantIdOrderByConfidenceDesc(tenant());
-        Map<UUID, List<SemanticJoin>> graph = new LinkedHashMap<>();
-        for (SemanticJoin join : all) {
-            graph.computeIfAbsent(join.getFromTermId(), ignored -> new ArrayList<>()).add(join);
-            graph.computeIfAbsent(join.getToTermId(), ignored -> new ArrayList<>()).add(join);
-        }
+        Map<UUID, List<SemanticJoin>> graph = graph();
         List<List<SemanticJoin>> paths = new ArrayList<>();
         dfs(fromTermId, toTermId, graph, new ArrayList<>(), new LinkedHashSet<>(), paths, 5);
         List<RankedPath> ranked = new ArrayList<>();
@@ -462,6 +553,11 @@ public class OntologyEvolutionService {
     @Transactional
     public EvolutionReport evolutionV2(int rounds) {
         int requested = Math.max(1, Math.min(10, rounds));
+        String key = "evolution-v2:" + tenant() + ":" + requested;
+        return cached(key, 1500, () -> computeEvolutionV2(requested));
+    }
+
+    private EvolutionReport computeEvolutionV2(int requested) {
         JoinInference inference = inferJoinsFromHistory();
         List<BridgeTable> bridges = bridges();
         long observed = joins.findByTenantIdOrderByConfidenceDesc(tenant()).stream()
