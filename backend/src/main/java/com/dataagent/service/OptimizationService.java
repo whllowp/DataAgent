@@ -144,7 +144,7 @@ public class OptimizationService {
         String lastError = null;
         for (int i = 0; i < runs; i++) {
             SqlDtos.QueryResult result = queries.execute(datasourceId, sql, 100, null, false, false,
-                    "benchmark", "性能基准对比", "benchmark");
+                    false, "benchmark", "性能基准对比", "benchmark", true);
             if ("ERROR".equals(result.status())) {
                 lastError = result.message();
                 break;

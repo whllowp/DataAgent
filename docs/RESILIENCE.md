@@ -80,7 +80,56 @@ spring:
 - 并发配额在熔断检查后获取
 - 查询结束释放配额；SQL 异常也释放
 
-## 5. 运维建议
+## 5. 并发排队调度
+
+`QueryConcurrencyLimiter` 在并发耗尽时不再立即拒绝，而是进入 FIFO 公平队列等待：
+
+```yaml
+dataagent:
+  query:
+    queue-wait-timeout-ms: 30000   # 排队等待上限，超时返回 429
+    max-queue-depth: 200           # 队列长度上限，满则立即 429
+```
+
+- 全局信号量（默认 16）+ 每数据源信号量（默认 4）均为公平模式
+- 排队等待超时 / 队列已满 / 线程中断 → `429 TOO_MANY_REQUESTS`
+- `GET /api/ops/queue` 查看：活跃数、排队数、最大深度、等待超时、累计拒绝数、平均等待耗时
+- 指标 `totalRejected` / `totalQueued` / `totalWaitedNanos` 记录在限流器内
+
+## 6. SQL 执行超时与自动杀会话
+
+查询执行时在数据库侧登记会话，超时由看门狗主动终止（不依赖 JDBC 驱动放弃）：
+
+- `QueryKiller` 按方言终止：PostgreSQL `pg_terminate_backend`、MySQL `KILL`、H2 `CANCEL_SESSION`
+- `SessionWatchdog` 每 5s 扫描一次，kill 超过 deadline 的会话
+- `GET /api/ops/sessions` 列出在途会话；`POST /api/ops/sessions/{queryId}/kill` 手动终止
+- `statement.setQueryTimeout(timeout)` 仍作为第一道防线，看门狗是兜底
+
+```yaml
+dataagent:
+  query:
+    kill-enabled: true            # 关闭后看门狗不主动杀会话
+    session-watchdog-ms: 5000     # 扫描间隔
+```
+
+## 7. 高危 SQL 拦截
+
+`SqlRiskAssessor` 在执行前对只读 SQL 评分，分数达到阈值直接拦截：
+
+```yaml
+dataagent:
+  query:
+    risk-block-score: 70          # >= 该分数拦截执行
+    risk-warn-score: 40           # >= 该分数标记 MEDIUM
+```
+
+- 加权规则：全表扫描 30、笛卡尔/逗号连接 30、前置通配符 20、函数列 15、`SELECT *` 15、`ORDER BY` 无 `LIMIT` 10、`OR` 10、`NOT IN` 10、大 `OFFSET`(≥1万) 10、`DISTINCT` 5、`UNION` 5、`IN` 子查询 5、隐式转换 5（上限 100）
+- 级别：`>=80` CRITICAL、`>=60` HIGH、`>=40` MEDIUM、`>0` LOW、`0` NONE
+- 被拦截返回 `403`（code `SQL_NOT_ALLOWED`），审计 `SQL_RISK_BLOCKED`
+- 显式 `allowRisky=true` 可覆盖（供基准/优化实验室等受控场景使用）
+- `POST /api/optimize/risk` 预检评分；`POST /api/optimize/rewrite` 安全改写；`POST /api/optimize/evolve` 十轮优化演进
+
+## 8. 运维建议
 
 - 开启 Redis 时使用独立 DB/前缀，避免与其他系统冲突
 - 监控 `dataagent.query.duration`、`dataagent.query.executions`、缓存命中率

@@ -8,6 +8,7 @@ import com.dataagent.repository.QueryExecutionRepository;
 import com.dataagent.sql.PlanService;
 import com.dataagent.sql.ResultValueConverter;
 import com.dataagent.sql.SqlGuard;
+import com.dataagent.sql.SqlRiskAssessor;
 import com.dataagent.web.ApiException;
 import com.dataagent.web.dto.SqlDtos;
 import io.micrometer.core.instrument.Counter;
@@ -47,13 +48,17 @@ public class JdbcQueryService {
     private final AuditService audit;
     private final PiiService pii;
     private final DatasourceResilience resilience;
+    private final SqlRiskAssessor riskAssessor;
+    private final QuerySessionRegistry sessionRegistry;
+    private final QueryKiller queryKiller;
 
     public JdbcQueryService(DatasourceService datasources, SqlGuard guard, PlanService planService,
                             ResultValueConverter valueConverter, QueryExecutionRepository executions,
                             DataAgentProperties properties, SqlAssetService sqlAssets,
                             MeterRegistry meterRegistry, QueryResultCache cache,
                             QueryConcurrencyLimiter concurrency, AuditService audit, PiiService pii,
-                            DatasourceResilience resilience) {
+                            DatasourceResilience resilience, SqlRiskAssessor riskAssessor,
+                            QuerySessionRegistry sessionRegistry, QueryKiller queryKiller) {
         this.datasources = datasources;
         this.guard = guard;
         this.planService = planService;
@@ -67,6 +72,9 @@ public class JdbcQueryService {
         this.audit = audit;
         this.pii = pii;
         this.resilience = resilience;
+        this.riskAssessor = riskAssessor;
+        this.sessionRegistry = sessionRegistry;
+        this.queryKiller = queryKiller;
     }
 
     public SqlDtos.QueryResult execute(UUID datasourceId, String rawSql, Integer maxRows,
@@ -86,20 +94,38 @@ public class JdbcQueryService {
     public SqlDtos.QueryResult execute(UUID datasourceId, String rawSql, Integer maxRows,
                                        Integer timeoutSeconds, boolean includePlan, boolean autoPlan,
                                        boolean fresh, String user, String problem, String tags) {
+        return execute(datasourceId, rawSql, maxRows, timeoutSeconds, includePlan, autoPlan, fresh,
+                user, problem, tags, false);
+    }
+
+    public SqlDtos.QueryResult execute(UUID datasourceId, String rawSql, Integer maxRows,
+                                       Integer timeoutSeconds, boolean includePlan, boolean autoPlan,
+                                       boolean fresh, String user, String problem, String tags,
+                                       boolean allowRisky) {
         return executeInternal(datasourceId, rawSql, maxRows, timeoutSeconds, includePlan, autoPlan,
-                fresh, user, problem, tags, false);
+                fresh, user, problem, tags, false, allowRisky);
     }
 
     private SqlDtos.QueryResult executeInternal(UUID datasourceId, String rawSql, Integer maxRows,
                                                 Integer timeoutSeconds, boolean includePlan, boolean autoPlan,
                                                 boolean fresh, String user, String problem, String tags,
-                                                boolean retried) {
+                                                boolean retried, boolean allowRisky) {
         SqlGuard.GuardedSql guarded;
         try {
             guarded = guard.guardForExecution(rawSql);
         } catch (ApiException blocked) {
             audit.record("SQL_BLOCKED", "ERROR", "SQL", null, datasourceId, blocked.getMessage());
             throw blocked;
+        }
+        if (!allowRisky) {
+            SqlRiskAssessor.RiskAssessment risk = riskAssessor.assess(guarded.sql());
+            if (risk.blocked()) {
+                audit.record("SQL_RISK_BLOCKED", "ERROR", "SQL", null, datasourceId,
+                        "score=" + risk.score() + " level=" + risk.level()
+                                + " fingerprint=" + guarded.fingerprint());
+                throw ApiException.forbidden("高危 SQL 已拦截（风险评分 " + risk.score() + "，级别 "
+                        + risk.level() + "）。请补充过滤条件/LIMIT，或显式 allowRisky=true 覆盖。");
+            }
         }
         Datasource datasource = datasources.getRequired(datasourceId);
         DbDialect dialect = DbDialect.from(datasource.getDialect());
@@ -142,6 +168,14 @@ public class JdbcQueryService {
             try (Connection connection = dataSource.getConnection()) {
                 connection.setReadOnly(datasource.isReadOnly());
                 connection.setAutoCommit(false);
+                try {
+                    String sessionId = queryKiller.sessionIdOf(connection, dialect);
+                    Instant deadline = Instant.now().plusSeconds(timeout);
+                    sessionRegistry.begin(queryId, datasourceId, sessionId, guarded.fingerprint(),
+                            deadline, user, dialect.name());
+                } catch (RuntimeException registerError) {
+                    log.debug("Session registration failed for {}: {}", queryId, registerError.getMessage());
+                }
                 try (Statement statement = connection.createStatement()) {
                     statement.setQueryTimeout(timeout);
                     statement.setMaxRows(limit + 1);
@@ -197,6 +231,8 @@ public class JdbcQueryService {
             } catch (SQLException e) {
                 error = friendlyError(e, timeout);
                 transientError = DatasourceResilience.isTransient(e);
+            } finally {
+                sessionRegistry.end(queryId);
             }
         } catch (ApiException busy) {
             audit.record("SQL_BLOCKED", "ERROR", "SQL", null, datasourceId, busy.getMessage());
@@ -210,7 +246,7 @@ public class JdbcQueryService {
                 audit.record("SQL_RETRY", "ERROR", "SQL", null, datasourceId,
                         "transient failure, retrying once: " + error);
                 return executeInternal(datasourceId, rawSql, maxRows, timeoutSeconds, includePlan,
-                        autoPlan, true, user, problem, tags, true);
+                        autoPlan, true, user, problem, tags, true, allowRisky);
             }
         } else {
             resilience.success(datasourceId, elapsedMs);

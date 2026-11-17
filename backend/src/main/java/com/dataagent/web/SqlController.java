@@ -25,7 +25,8 @@ public class SqlController {
                                        @RequestAttribute(name = ApiTokenFilter.USER_ATTRIBUTE) String user) {
         return queries.execute(request.datasourceId(), request.sql(), request.maxRows(),
                 request.timeoutSeconds(), Boolean.TRUE.equals(request.includePlan()), true,
-                Boolean.TRUE.equals(request.fresh()), user, request.problem(), request.tags());
+                Boolean.TRUE.equals(request.fresh()), user, request.problem(), request.tags(),
+                Boolean.TRUE.equals(request.allowRisky()));
     }
 
     @PostMapping("/explain")

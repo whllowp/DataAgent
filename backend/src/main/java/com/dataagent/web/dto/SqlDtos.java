@@ -23,7 +23,8 @@ public final class SqlDtos {
             Boolean includePlan,
             @Size(max = 2000) String problem,
             @Size(max = 500) String tags,
-            Boolean fresh
+            Boolean fresh,
+            Boolean allowRisky
     ) {
     }
 

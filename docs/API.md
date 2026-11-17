@@ -1010,6 +1010,69 @@ Prometheus 指标：
 { "prompt": "...", "guardrails": ["..."] }
 ```
 
+### `POST /api/optimize/risk`
+
+执行前对只读 SQL 做高危/低效模式评分（全表扫描、笛卡尔积、前置通配符、函数列、`SELECT *`、`ORDER BY` 无 `LIMIT` 等）。
+
+```json
+{ "sql": "SELECT * FROM orders" }
+```
+
+```json
+{
+  "score": 45,
+  "level": "MEDIUM",
+  "blocked": false,
+  "risks": [
+    { "code": "SELECT_STAR", "severity": "LOW", "weight": 15, "title": "...", "detail": "...", "evidence": "..." }
+  ]
+}
+```
+
+`blocked=true` 表示该 SQL 执行时会被拦截（评分 >= `risk-block-score`，默认 70）。
+
+### `POST /api/optimize/rewrite`
+
+对只读 SQL 做安全自动改写：无 `LIMIT` 追加 `LIMIT`、`ORDER BY` 无 `LIMIT` 追加 `LIMIT`、去除末尾分号。
+
+```json
+{ "sql": "SELECT * FROM orders ORDER BY created_at" }
+```
+
+```json
+{
+  "rewrittenSql": "SELECT * FROM orders ORDER BY created_at LIMIT 5000",
+  "applied": [ { "type": "ADD_LIMIT", "detail": "...", "before": "...", "after": "..." } ],
+  "suggestions": [],
+  "risks": []
+}
+```
+
+### `POST /api/optimize/evolve`
+
+对指定 SQL 跑十轮优化演进：每轮安全改写 + 基准（取最小耗时），保留最快版本并落库。
+
+```json
+{ "datasourceId": "...", "sql": "SELECT * FROM orders", "rounds": 10 }
+```
+
+```json
+{
+  "runId": "...",
+  "datasourceId": "...",
+  "originalSql": "...",
+  "bestSql": "...",
+  "baselineMs": 42,
+  "bestMs": 18,
+  "improvementPercent": 57.14,
+  "score": 100,
+  "rounds": 10,
+  "verdict": "FASTER",
+  "roundResults": [ { "round": 1, "sql": "...", "elapsedMs": 18, "improved": true } ],
+  "createdAt": "2026-11-18T01:20:00Z"
+}
+```
+
 ## 13. 错误码
 
 | HTTP | code | 说明 |
@@ -1018,6 +1081,7 @@ Prometheus 指标：
 | 401 | `UNAUTHORIZED` | 缺少/错误 API Token |
 | 403 | `SQL_NOT_ALLOWED` | 非只读、多语句、危险关键字 |
 | 404 | `NOT_FOUND` | 数据源/历史/知识条目不存在 |
+| 429 | `TOO_MANY_REQUESTS` | 并发配额排队超时/队列已满/慢查询限流 |
 | 502 | `UPSTREAM_ERROR` | 上游/数据库错误（部分场景返回 200 + status=ERROR） |
 | 500 | `INTERNAL_ERROR` | 未预期异常 |
 
@@ -1125,6 +1189,18 @@ GET /api/audit?actor=alice&action=SQL_EXECUTE&status=ERROR&limit=100&offset=0
 ### `GET /api/ops/resilience`
 
 返回数据源失败计数、熔断截止时间、慢查询限流截止时间。
+
+### `GET /api/ops/sessions`
+
+列出在途查询会话：`queryId`、`datasourceId`、`sessionId`、`sqlFingerprint`、`startedAt`、`deadline`、`user`、`dialect`。
+
+### `POST /api/ops/sessions/{queryId}/kill`
+
+手动终止一个在途查询会话（按方言在数据库侧 kill，并移除注册）。
+
+### `GET /api/ops/queue`
+
+查看并发排队统计：`activeCount`、`queuedCount`、`maxQueueDepth`、`queueWaitTimeoutMs`、`totalRejected`、`avgWaitMs`。
 
 ## 16. ETL / DolphinScheduler
 

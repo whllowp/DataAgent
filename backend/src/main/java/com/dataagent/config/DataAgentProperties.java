@@ -316,6 +316,11 @@ public class DataAgentProperties {
         private int cacheMaxEntries = 200;
         private int maxConcurrentQueries = 16;
         private int maxConcurrentPerDatasource = 4;
+        private int riskBlockScore = 70;
+        private int riskWarnScore = 40;
+        private long queueWaitTimeoutMs = 30_000;
+        private int maxQueueDepth = 200;
+        private boolean killEnabled = true;
 
         public int getDefaultMaxRows() {
             return defaultMaxRows;
@@ -411,6 +416,46 @@ public class DataAgentProperties {
 
         public void setMaxConcurrentPerDatasource(int maxConcurrentPerDatasource) {
             this.maxConcurrentPerDatasource = maxConcurrentPerDatasource;
+        }
+
+        public int getRiskBlockScore() {
+            return riskBlockScore;
+        }
+
+        public void setRiskBlockScore(int riskBlockScore) {
+            this.riskBlockScore = riskBlockScore;
+        }
+
+        public int getRiskWarnScore() {
+            return riskWarnScore;
+        }
+
+        public void setRiskWarnScore(int riskWarnScore) {
+            this.riskWarnScore = riskWarnScore;
+        }
+
+        public long getQueueWaitTimeoutMs() {
+            return queueWaitTimeoutMs;
+        }
+
+        public void setQueueWaitTimeoutMs(long queueWaitTimeoutMs) {
+            this.queueWaitTimeoutMs = queueWaitTimeoutMs;
+        }
+
+        public int getMaxQueueDepth() {
+            return maxQueueDepth;
+        }
+
+        public void setMaxQueueDepth(int maxQueueDepth) {
+            this.maxQueueDepth = maxQueueDepth;
+        }
+
+        public boolean isKillEnabled() {
+            return killEnabled;
+        }
+
+        public void setKillEnabled(boolean killEnabled) {
+            this.killEnabled = killEnabled;
         }
     }
 

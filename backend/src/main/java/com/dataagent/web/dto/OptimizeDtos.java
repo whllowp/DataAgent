@@ -77,4 +77,52 @@ public final class OptimizeDtos {
 
     public record PromptView(String prompt, List<String> guardrails) {
     }
+
+    public record RewriteRequest(
+            @NotBlank @Size(max = 100000) String sql
+    ) {
+    }
+
+    public record Rewrite(String type, String detail, String before, String after) {
+    }
+
+    public record RewriteView(
+            String rewrittenSql,
+            List<Rewrite> applied,
+            List<String> suggestions,
+            List<String> risks
+    ) {
+    }
+
+    public record Risk(String code, String severity, int weight, String title, String detail, String evidence) {
+    }
+
+    public record RiskView(int score, String level, boolean blocked, List<Risk> risks) {
+    }
+
+    public record EvolveRequest(
+            @NotNull UUID datasourceId,
+            @NotBlank @Size(max = 100000) String sql,
+            @Min(1) @Max(50) Integer rounds
+    ) {
+    }
+
+    public record RoundResult(int round, String sql, long elapsedMs, boolean improved) {
+    }
+
+    public record EvolutionView(
+            UUID runId,
+            UUID datasourceId,
+            String originalSql,
+            String bestSql,
+            Long baselineMs,
+            Long bestMs,
+            Double improvementPercent,
+            int score,
+            int rounds,
+            String verdict,
+            List<RoundResult> roundResults,
+            Instant createdAt
+    ) {
+    }
 }

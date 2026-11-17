@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.LongAdder;
 
 @Service
 public class QueryConcurrencyLimiter {
@@ -24,6 +25,9 @@ public class QueryConcurrencyLimiter {
     private final ObjectProvider<StringRedisTemplate> redisProvider;
     private final Semaphore global;
     private final Map<UUID, Semaphore> perDatasource = new ConcurrentHashMap<>();
+    private final LongAdder totalRejected = new LongAdder();
+    private final LongAdder totalWaitedNanos = new LongAdder();
+    private final LongAdder totalQueued = new LongAdder();
 
     public QueryConcurrencyLimiter(DataAgentProperties properties,
                                    ObjectProvider<StringRedisTemplate> redisProvider) {
@@ -43,19 +47,59 @@ public class QueryConcurrencyLimiter {
     }
 
     private Lease acquireLocal(UUID datasourceId) {
-        if (!global.tryAcquire()) {
-            throw ApiException.tooManyRequests("查询并发已达上限，请稍后重试。");
+        long waitMs = properties.getQuery().getQueueWaitTimeoutMs();
+        if (global.getQueueLength() >= properties.getQuery().getMaxQueueDepth()) {
+            totalRejected.increment();
+            throw ApiException.tooManyRequests("查询排队已满，请稍后重试。");
         }
+        long start = System.nanoTime();
+        try {
+            if (!global.tryAcquire(waitMs, TimeUnit.MILLISECONDS)) {
+                totalRejected.increment();
+                throw ApiException.tooManyRequests("查询排队等待超时（>" + waitMs + "ms），请稍后重试。");
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            totalRejected.increment();
+            throw ApiException.tooManyRequests("查询排队被中断。");
+        }
+        totalQueued.increment();
         Semaphore datasource = perDatasource.computeIfAbsent(datasourceId,
                 ignored -> new Semaphore(Math.max(1, properties.getQuery().getMaxConcurrentPerDatasource()), true));
-        if (!datasource.tryAcquire()) {
-            global.release();
-            throw ApiException.tooManyRequests("该数据源查询并发已达上限，请稍后重试。");
+        boolean datasourceAcquired = false;
+        try {
+            datasourceAcquired = datasource.tryAcquire(waitMs, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         }
+        if (!datasourceAcquired) {
+            global.release();
+            totalRejected.increment();
+            throw ApiException.tooManyRequests("该数据源查询排队等待超时，请稍后重试。");
+        }
+        totalWaitedNanos.add(System.nanoTime() - start);
         return new Lease(() -> {
             datasource.release();
             global.release();
         });
+    }
+
+    public QueueStats queueStats() {
+        long queued = Math.max(0, global.getQueueLength())
+                + perDatasource.values().stream().mapToInt(Semaphore::getQueueLength).sum();
+        long waitedMs = totalWaitedNanos.sum() / 1_000_000;
+        long queuedCount = Math.max(1, totalQueued.sum());
+        return new QueueStats(
+                properties.getQuery().getMaxConcurrentQueries() - global.availablePermits(),
+                (int) queued,
+                properties.getQuery().getMaxQueueDepth(),
+                properties.getQuery().getQueueWaitTimeoutMs(),
+                totalRejected.sum(),
+                waitedMs / queuedCount);
+    }
+
+    public record QueueStats(int activeCount, int queuedCount, int maxQueueDepth,
+                             long queueWaitTimeoutMs, long totalRejected, long avgWaitMs) {
     }
 
     private Lease acquireRedis(UUID datasourceId) {

@@ -82,7 +82,7 @@ public class BenchmarkService {
         SqlDtos.QueryResult result = null;
         try {
             result = queries.execute(datasourceId, item.getSqlText(), 100, null, false, false,
-                    "sre-benchmark", item.getDescription(), benchmarkTags(item));
+                    false, "sre-benchmark", item.getDescription(), benchmarkTags(item), true);
             status = result.status();
             error = result.message();
         } catch (RuntimeException ex) {

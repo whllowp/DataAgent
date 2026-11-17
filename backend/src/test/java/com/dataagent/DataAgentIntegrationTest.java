@@ -36,7 +36,12 @@ import com.dataagent.service.RsiService;
 import com.dataagent.service.SemanticService;
 import com.dataagent.service.SemanticSyncService;
 import com.dataagent.service.SqlAssetService;
+import com.dataagent.service.SqlOptimizationLabService;
+import com.dataagent.service.QueryConcurrencyLimiter;
+import com.dataagent.service.QuerySessionRegistry;
 import com.dataagent.service.VerifiedQueryService;
+import com.dataagent.sql.SqlRewriter;
+import com.dataagent.sql.SqlRiskAssessor;
 import com.dataagent.web.ApiException;
 import com.dataagent.web.dto.ApiKeyDtos;
 import com.dataagent.web.dto.AuditDtos;
@@ -161,6 +166,16 @@ class DataAgentIntegrationTest {
     private AuditExportService auditExport;
     @Autowired
     private AuditService audit;
+    @Autowired
+    private SqlRiskAssessor riskAssessor;
+    @Autowired
+    private SqlRewriter rewriter;
+    @Autowired
+    private SqlOptimizationLabService sqlOptimizationLab;
+    @Autowired
+    private QuerySessionRegistry sessionRegistry;
+    @Autowired
+    private QueryConcurrencyLimiter limiter;
     @Autowired
     private MockMvc mockMvc;
 
@@ -797,5 +812,69 @@ class DataAgentIntegrationTest {
                         .header("Access-Control-Request-Headers", "X-API-Key"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Access-Control-Allow-Origin", "dsh-app://dsh"));
+    }
+
+    @Test
+    void riskAssessorScoresFullScanAndRewriterAppendsLimit() {
+        SqlRiskAssessor.RiskAssessment assessment = riskAssessor.assess("SELECT * FROM orders");
+        assertTrue(assessment.score() >= 40);
+        assertTrue(assessment.risks().stream().anyMatch(r -> r.code().equals("FULL_SCAN")));
+
+        SqlRewriter.RewriteResult rewritten = rewriter.rewrite("SELECT id FROM orders ORDER BY created_at");
+        assertTrue(rewritten.rewrittenSql().toUpperCase().endsWith("LIMIT 5000"));
+    }
+
+    @Test
+    void riskGateBlocksRiskySqlButAllowRiskyBypasses() {
+        String risky = "SELECT * FROM customers c, sales_orders s";
+        assertThrows(ApiException.class, () -> queries.execute(demo.getId(), risky, 10, 5, false,
+                "test", null, null));
+
+        SqlDtos.QueryResult result = queries.execute(demo.getId(), risky, 10, 5, false, false,
+                false, "test", null, null, true);
+        assertEquals("SUCCESS", result.status());
+    }
+
+    @Test
+    void riskEndpointReportsBlockedForFullScan() throws Exception {
+        mockMvc.perform(post("/api/optimize/risk")
+                        .header("X-API-Key", "test-token")
+                        .contentType("application/json")
+                        .content("{\"sql\":\"SELECT * FROM orders\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.score").value(org.hamcrest.Matchers.greaterThanOrEqualTo(40)))
+                .andExpect(jsonPath("$.blocked").value(false));
+    }
+
+    @Test
+    void rewriteEndpointAppendsLimit() throws Exception {
+        mockMvc.perform(post("/api/optimize/rewrite")
+                        .header("X-API-Key", "test-token")
+                        .contentType("application/json")
+                        .content("{\"sql\":\"SELECT id FROM orders ORDER BY created_at\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rewrittenSql", org.hamcrest.Matchers.endsWith("LIMIT 5000")));
+    }
+
+    @Test
+    void evolveRunsTenRoundsAndPersists() {
+        OptimizeDtos.EvolutionView evolution = sqlOptimizationLab.evolve(demo.getId(),
+                "SELECT id, name FROM customers ORDER BY created_at", 10);
+        assertEquals(10, evolution.rounds());
+        assertEquals(100, evolution.score());
+        assertEquals(10, evolution.roundResults().size());
+        assertNotNull(evolution.runId());
+        assertTrue(evolution.bestMs() >= 0);
+    }
+
+    @Test
+    void queueAndSessionEndpointsAreAvailable() throws Exception {
+        QueryConcurrencyLimiter.QueueStats stats = limiter.queueStats();
+        assertTrue(stats.maxQueueDepth() > 0);
+        mockMvc.perform(get("/api/ops/queue").header("X-API-Key", "test-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.maxQueueDepth").exists());
+        mockMvc.perform(get("/api/ops/sessions").header("X-API-Key", "test-token"))
+                .andExpect(status().isOk());
     }
 }

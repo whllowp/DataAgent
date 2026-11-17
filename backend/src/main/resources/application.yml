@@ -84,6 +84,15 @@ dataagent:
     cache-max-entries: ${DATAAGENT_QUERY_CACHE_MAX_ENTRIES:200}
     max-concurrent-queries: ${DATAAGENT_MAX_CONCURRENT_QUERIES:16}
     max-concurrent-per-datasource: ${DATAAGENT_MAX_CONCURRENT_PER_DATASOURCE:4}
+    # Query queueing: when concurrency is saturated, wait up to this long before rejecting.
+    queue-wait-timeout-ms: ${DATAAGENT_QUEUE_WAIT_TIMEOUT_MS:30000}
+    max-queue-depth: ${DATAAGENT_MAX_QUEUE_DEPTH:200}
+    # High-risk SQL interception thresholds (0..100).
+    risk-block-score: ${DATAAGENT_RISK_BLOCK_SCORE:70}
+    risk-warn-score: ${DATAAGENT_RISK_WARN_SCORE:40}
+    # Session watchdog: auto-kill queries that exceed their execution timeout.
+    kill-enabled: ${DATAAGENT_QUERY_KILL_ENABLED:true}
+    session-watchdog-ms: ${DATAAGENT_SESSION_WATCHDOG_MS:5000}
   semantic:
     sync-enabled: ${DATAAGENT_SEMANTIC_SYNC_ENABLED:true}
     sync-interval-ms: ${DATAAGENT_SEMANTIC_SYNC_INTERVAL_MS:1800000}

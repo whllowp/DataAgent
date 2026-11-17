@@ -1021,6 +1021,77 @@ const tools = [
       ? api(`/api/semantic/ontology/graph?termId=${encodeURIComponent(args.termId)}`)
       : api('/api/semantic/ontology/graph/full'),
   },
+  {
+    name: 'dataagent_sql_risk',
+    description: '对只读 SQL 做高危/低效模式评分（全表扫描、笛卡尔积、前置通配符、函数列等），返回分数、级别、是否会被拦截。执行前先调用以避免被拦截。',
+    inputSchema: {
+      type: 'object',
+      properties: { sql: { type: 'string', description: '只读 SQL' } },
+      required: ['sql'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => api('/api/optimize/risk', { method: 'POST', body: { sql: args.sql } }),
+  },
+  {
+    name: 'dataagent_sql_rewrite',
+    description: '对只读 SQL 做安全的自动改写（无 LIMIT 追加 LIMIT、ORDER BY 无 LIMIT 追加 LIMIT、去除末尾分号），返回改写结果与语义风险提示。',
+    inputSchema: {
+      type: 'object',
+      properties: { sql: { type: 'string', description: '只读 SQL' } },
+      required: ['sql'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: (args) => api('/api/optimize/rewrite', { method: 'POST', body: { sql: args.sql } }),
+  },
+  {
+    name: 'dataagent_sql_optimize',
+    description: '对指定 SQL 跑十轮优化演进：每轮安全改写 + 基准（取最小耗时），保留最快版本，返回基线/最优耗时、提升幅度与每轮结果，并落库。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        datasourceId: { type: 'string', description: '数据源 UUID；省略时使用第一个数据源' },
+        sql: { type: 'string', description: '只读 SQL' },
+        rounds: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+      },
+      required: ['sql'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    handler: async (args) => {
+      const datasourceId = args.datasourceId || await firstDatasourceId();
+      return api('/api/optimize/evolve', {
+        method: 'POST',
+        body: { datasourceId, sql: args.sql, rounds: args.rounds || 10 },
+      });
+    },
+  },
+  {
+    name: 'dataagent_query_sessions',
+    description: '列出当前在途查询会话（数据源、会话 ID、SQL 指纹、启动时间、截止时间、用户、方言）。用于观察慢查询与超时。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    handler: () => api('/api/ops/sessions'),
+  },
+  {
+    name: 'dataagent_query_kill',
+    description: '杀掉一个在途查询会话（按 queryId），并在数据库侧终止对应会话。用于手动终止超时/失控查询。',
+    inputSchema: {
+      type: 'object',
+      properties: { queryId: { type: 'string', description: '会话 queryId（UUID）' } },
+      required: ['queryId'],
+      additionalProperties: false,
+    },
+    handler: (args) => api(`/api/ops/sessions/${encodeURIComponent(args.queryId)}/kill`, { method: 'POST' }),
+  },
+  {
+    name: 'dataagent_query_queue',
+    description: '查看查询并发队列统计：当前活跃数、排队数、最大队列深度、等待超时、累计拒绝数与平均等待耗时。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    handler: () => api('/api/ops/queue'),
+  },
 ];
 
 async function firstDatasourceId() {
