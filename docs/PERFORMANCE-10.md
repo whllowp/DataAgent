@@ -11,7 +11,8 @@ references are:
 
 ## Measurement
 
-Local demo, H2, same four read endpoints:
+Local demo, H2, same four read endpoints. Raw machine-readable results:
+[performance-10.json](performance-10.json).
 
 ```text
 GET /api/evolution/memory/retrieval?probes=10

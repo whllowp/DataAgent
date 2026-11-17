@@ -1,0 +1,57 @@
+{
+  "workload": "local demo, H2, four read endpoints",
+  "method": "2 warmups + 8 measured requests per endpoint; median ms",
+  "endpoints": [
+    {
+      "path": "/api/evolution/memory/retrieval?probes=10",
+      "before_ms": 23.3,
+      "after_ms": 19.3,
+      "reduction_pct": 17.2
+    },
+    {
+      "path": "/api/evolution/memory/rounds-v2?count=10",
+      "before_ms": 27.5,
+      "after_ms": 18.4,
+      "reduction_pct": 33.1
+    },
+    {
+      "path": "/api/evolution/semantic/answerable-v2?q=CUSTOMERS",
+      "before_ms": 37.8,
+      "after_ms": 20.4,
+      "reduction_pct": 46.0
+    },
+    {
+      "path": "/api/evolution/semantic/rounds-v2?count=10",
+      "before_ms": 61.1,
+      "after_ms": 17.3,
+      "reduction_pct": 71.7
+    }
+  ],
+  "aggregate_median": {
+    "before_ms": 149.7,
+    "after_ms": 75.4,
+    "reduction_pct": 49.6
+  },
+  "performance_lab_10_rounds": {
+    "memory.retrieval+compress": {
+      "cold_ms": 7.6,
+      "warm_median_ms": 0.1,
+      "improvement_pct": 98.5
+    },
+    "ontology.answerable+paths": {
+      "cold_ms": 33.1,
+      "warm_median_ms": 1.6,
+      "improvement_pct": 95.2
+    }
+  },
+  "tests": {
+    "integration": 33,
+    "plan_service": 3,
+    "sql_analyzer": 4,
+    "sql_guard": 8,
+    "total": 48,
+    "failures": 0,
+    "errors": 0
+  },
+  "boundary": "local demo benchmark; warm-cache numbers are steady-state, not production load tests"
+}
