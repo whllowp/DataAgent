@@ -43,6 +43,9 @@ public class RsiCandidate extends BaseEntity {
     @Column(nullable = false, length = 20)
     private String status;
 
+    @Column(name = "predicted_score")
+    private Double predictedScore;
+
     public UUID getRunId() {
         return runId;
     }
@@ -129,5 +132,13 @@ public class RsiCandidate extends BaseEntity {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public Double getPredictedScore() {
+        return predictedScore;
+    }
+
+    public void setPredictedScore(Double predictedScore) {
+        this.predictedScore = predictedScore;
     }
 }

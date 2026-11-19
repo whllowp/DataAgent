@@ -271,7 +271,7 @@ java -jar backend/target/dataagent-cloud-0.1.0.jar
 ## 开发与测试
 
 ```powershell
-# 后端单元 + 集成测试（74 个）
+# 后端单元 + 集成测试（82 个）
 cd backend
 mvn test
 

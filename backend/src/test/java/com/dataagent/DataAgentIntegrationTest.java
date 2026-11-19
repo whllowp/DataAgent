@@ -25,6 +25,7 @@ import com.dataagent.service.OpenLineageService;
 import com.dataagent.service.AuditService;
 import com.dataagent.service.FeedbackService;
 import com.dataagent.service.LineageService;
+import java.util.List;
 import com.dataagent.service.MemoryCandidateService;
 import com.dataagent.service.MemoryDreamService;
 import com.dataagent.service.MemoryEvolutionService;
@@ -640,6 +641,24 @@ class DataAgentIntegrationTest {
         assertFalse(detail.paretoFront().isEmpty());
         assertEquals(10, detail.generations().stream()
                 .mapToInt(RsiDtos.GenerationView::generation).max().orElse(-1));
+    }
+
+    @Test
+    void evolvesRsiWithWorldModelPredictionGuidedSelection() {
+        RsiDtos.RunDetail detail = rsi.start(new RsiDtos.StartRequest(
+                "evolve DataAgent harness with RSI-Anything world model", 10, 4));
+        assertEquals("COMPLETED", detail.run().status());
+        assertEquals(11, detail.generations().size());
+        // every generation records a reliability label; the seed is "insufficient"
+        assertTrue(detail.generations().stream().allMatch(g -> g.reliability() != null));
+        assertEquals("insufficient", detail.generations().get(0).reliability());
+        // after the seed, every generation records the world model's prediction error
+        assertTrue(detail.generations().stream().skip(1).allMatch(g -> g.predictionMae() != null));
+        // selected children carry a predicted score (prediction stored alongside observation)
+        List<RsiDtos.CandidateView> all = detail.generations().stream()
+                .flatMap(g -> g.population().stream()).toList();
+        assertTrue(all.stream().filter(c -> c.generation() > 0).anyMatch(c -> c.predictedScore() != null));
+        assertTrue(detail.best().scalarScore() > 0.5);
     }
 
     @Test

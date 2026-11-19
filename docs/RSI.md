@@ -4,6 +4,7 @@
 
 - [Dream-RSI: Recursive Self-Improvement through Evolving Worlds](https://arxiv.org/html/2609.14858v2#S3)
 - [Harmony Harness: Multi-Objective Self-Evolution of Agent Harnesses](https://arxiv.org/html/2610.15150v1)
+- [RSI-Anything: Recursive Self-Improvement with Predictive World Models](https://arxiv.org/html/2610.13912v1)（世界模型预测引导演进，见 [RSI-ANYTHING-10.md](RSI-ANYTHING-10.md)）
 
 ## 1. 论文映射
 

@@ -43,6 +43,16 @@ public class RsiService {
     private static final int MAX_GENERATIONS = 50;
     private static final int MAX_POPULATION = 8;
 
+    /** RSI-Anything prediction-guided selection: propose OVERSAMPLE× more children
+     * than the population, then let the world model keep only the most promising. */
+    private static final int OVERSAMPLE = 2;
+    /** Below this many observed samples the world model reports "insufficient". */
+    private static final int MIN_SAMPLES_FACTOR = 2;
+    /** Quality mean-absolute-error threshold (0..1) for "reliable" vs "unreliable". */
+    private static final double MAE_THRESHOLD = 0.05;
+    /** Least-mean-squares step size for the world-model readouts. */
+    private static final double LEARNING_RATE = 0.5;
+
     private final RsiRunRepository runs;
     private final RsiGenerationRepository generations;
     private final RsiCandidateRepository candidates;
@@ -83,27 +93,32 @@ public class RsiService {
         run = runs.save(run);
 
         Random random = new Random(run.getId().hashCode());
+        int minSamples = MIN_SAMPLES_FACTOR * population;
+
+        // RSI-Anything predictive foundation: a world model that learns
+        // genome → outcome and guides which children get evaluated.
+        RsiWorldModel worldModel = new RsiWorldModel(LEARNING_RATE);
         List<RsiCandidate> current = seed(run, population);
         evaluateAndScore(current);
+        worldModel.fit(samples(current));
+
         RsiCandidate best = best(current);
         double bestScore = best.getScalarScore();
-        saveGeneration(run, 0, current, bestScore);
+        saveGeneration(run, 0, current, bestScore, worldModel, null,
+                worldModel.reliability(Double.NaN, minSamples, MAE_THRESHOLD));
+
         for (int generation = 1; generation <= generationCount; generation++) {
-            List<RsiCandidate> next = new ArrayList<>();
-            for (int i = 0; i < population; i++) {
-                RsiCandidate parent = current.get(random.nextInt(current.size()));
-                Map<String, Object> childGenome = mutate(genome(parent), random);
-                RsiCandidate child = new RsiCandidate();
-                child.setRunId(run.getId());
-                child.setGeneration(generation);
-                child.setParentId(parent.getId());
-                child.setName("g" + generation + "-" + parent.getName() + "-" + i);
-                child.setGenomeJson(json(childGenome));
-                child.setStatus("EVALUATED");
-                child = candidates.save(child);
-                next.add(child);
-            }
+            List<Double> predictedQuality = new ArrayList<>();
+            List<RsiCandidate> next = proposeAndSelect(run, generation, current, population,
+                    random, worldModel, predictedQuality);
             evaluateAndScore(next);
+            double mae = predictionMae(next, predictedQuality);
+            String reliability = worldModel.reliability(mae, minSamples, MAE_THRESHOLD);
+            if (!"reliable".equals(reliability)) {
+                // Conditional world-model adaptation: keep learning only while the
+                // predictor is not yet trustworthy, mirroring the reliability gate.
+                worldModel.fit(samples(next));
+            }
             RsiCandidate generationBest = best(next);
             if (generationBest.getScalarScore() < bestScore) {
                 // elitism: keep the previous incumbent in the next population
@@ -117,7 +132,7 @@ public class RsiService {
                 run.setBestCandidateId(best.getId());
                 runs.save(run);
             }
-            saveGeneration(run, generation, current, bestScore);
+            saveGeneration(run, generation, current, bestScore, worldModel, mae, reliability);
         }
         run.setStatus("COMPLETED");
         run.setBestCandidateId(best.getId());
@@ -267,12 +282,16 @@ public class RsiService {
                 || left.getLatencyMs() < right.getLatencyMs());
     }
 
-    private void saveGeneration(RsiRun run, int number, List<RsiCandidate> population, double bestScore) {
+    private void saveGeneration(RsiRun run, int number, List<RsiCandidate> population, double bestScore,
+                                RsiWorldModel worldModel, Double predictionMae, String reliability) {
         RsiGeneration generation = new RsiGeneration();
         generation.setRunId(run.getId());
         generation.setGenerationNumber(number);
         generation.setBestScore(bestScore);
         generation.setParetoJson(json(paretoFront(population).stream().map(this::candidateView).toList()));
+        generation.setWorldModelJson(worldModel.toJson(objectMapper));
+        generation.setPredictionMae(predictionMae);
+        generation.setReliability(reliability);
         generations.save(generation);
     }
 
@@ -282,16 +301,22 @@ public class RsiService {
         for (RsiCandidate candidate : all) {
             byGeneration.computeIfAbsent(candidate.getGeneration(), ignored -> new ArrayList<>()).add(candidate);
         }
-        Map<Integer, Double> generationScores = new HashMap<>();
+        Map<Integer, RsiGeneration> generationRecords = new HashMap<>();
         for (RsiGeneration generation : generations.findByRunIdOrderByGenerationNumberAsc(run.getId())) {
-            generationScores.put(generation.getGenerationNumber(), generation.getBestScore());
+            generationRecords.put(generation.getGenerationNumber(), generation);
         }
         List<RsiDtos.GenerationView> generationViews = byGeneration.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
-                .map(entry -> new RsiDtos.GenerationView(entry.getKey(),
-                        generationScores.getOrDefault(entry.getKey(),
-                                entry.getValue().stream().mapToDouble(RsiCandidate::getScalarScore).max().orElse(0)),
-                        entry.getValue().stream().map(this::candidateView).toList()))
+                .map(entry -> {
+                    RsiGeneration record = generationRecords.get(entry.getKey());
+                    double bestScore = record == null
+                            ? entry.getValue().stream().mapToDouble(RsiCandidate::getScalarScore).max().orElse(0)
+                            : record.getBestScore();
+                    return new RsiDtos.GenerationView(entry.getKey(), bestScore,
+                            entry.getValue().stream().map(this::candidateView).toList(),
+                            record == null ? null : record.getPredictionMae(),
+                            record == null ? null : record.getReliability());
+                })
                 .toList();
         RsiCandidate best = run.getBestCandidateId() == null ? best(all)
                 : candidates.findById(run.getBestCandidateId()).orElse(best(all));
@@ -312,7 +337,8 @@ public class RsiService {
         return new RsiDtos.CandidateView(candidate.getId(), candidate.getGeneration(),
                 candidate.getParentId(), candidate.getName(), genome(candidate),
                 candidate.getQuality(), candidate.getCost(), candidate.getLatencyMs(),
-                candidate.getPassRate(), candidate.getScalarScore(), candidate.getStatus());
+                candidate.getPassRate(), candidate.getScalarScore(), candidate.getStatus(),
+                candidate.getPredictedScore());
     }
 
     private RsiRun required(UUID id) {
@@ -369,6 +395,96 @@ public class RsiService {
         }
         child.put("promptVariant", "evolved");
         return child;
+    }
+
+    /**
+     * RSI-Anything prediction-guided selection: propose {@code OVERSAMPLE}× more
+     * children than the population, predict each child's outcome with the world
+     * model, rank by predicted scalar score, and return only the top
+     * {@code population} (persisting them as EVALUATED). The predicted quality of
+     * each selected child is appended to {@code predictedQuality} so the caller
+     * can measure prediction error against the observed evaluation.
+     */
+    private List<RsiCandidate> proposeAndSelect(RsiRun run, int generation, List<RsiCandidate> current,
+                                                int population, Random random, RsiWorldModel worldModel,
+                                                List<Double> predictedQuality) {
+        int poolSize = population * OVERSAMPLE;
+        List<RsiCandidate> pool = new ArrayList<>();
+        for (int i = 0; i < poolSize; i++) {
+            RsiCandidate parent = current.get(random.nextInt(current.size()));
+            Map<String, Object> childGenome = mutate(genome(parent), random);
+            RsiCandidate child = new RsiCandidate();
+            child.setRunId(run.getId());
+            child.setGeneration(generation);
+            child.setParentId(parent.getId());
+            child.setName("g" + generation + "-" + parent.getName() + "-" + i);
+            child.setGenomeJson(json(childGenome));
+            pool.add(child);
+        }
+        double[] predictedQualityArray = new double[poolSize];
+        double[] predictedCost = new double[poolSize];
+        double[] predictedLatency = new double[poolSize];
+        for (int i = 0; i < poolSize; i++) {
+            RsiWorldModel.Prediction prediction = worldModel.predict(genome(pool.get(i)));
+            predictedQualityArray[i] = prediction.quality();
+            predictedCost[i] = prediction.cost();
+            predictedLatency[i] = prediction.latency();
+        }
+        double idealQuality = max(predictedQualityArray);
+        double idealCost = min(predictedCost);
+        double idealLatency = min(predictedLatency);
+        for (int i = 0; i < poolSize; i++) {
+            double qGap = Math.max(0, idealQuality - predictedQualityArray[i]) / Math.max(0.01, idealQuality);
+            double cGap = Math.max(0, predictedCost[i] - idealCost) / Math.max(1, idealCost);
+            double lGap = Math.max(0, predictedLatency[i] - idealLatency) / Math.max(1, idealLatency);
+            pool.get(i).setPredictedScore(1.0 - Math.max(0.6 * qGap, Math.max(0.25 * cGap, 0.15 * lGap)));
+        }
+        pool.sort(Comparator.comparingDouble(RsiCandidate::getPredictedScore).reversed());
+        List<RsiCandidate> selected = new ArrayList<>();
+        for (int i = 0; i < Math.min(population, pool.size()); i++) {
+            RsiCandidate child = pool.get(i);
+            child.setStatus("EVALUATED");
+            candidates.save(child);
+            selected.add(child);
+            predictedQuality.add(worldModel.predict(genome(child)).quality());
+        }
+        return selected;
+    }
+
+    private List<RsiWorldModel.Sample> samples(List<RsiCandidate> population) {
+        List<RsiWorldModel.Sample> result = new ArrayList<>();
+        for (RsiCandidate candidate : population) {
+            result.add(new RsiWorldModel.Sample(RsiWorldModel.features(genome(candidate)),
+                    candidate.getQuality(), candidate.getCost(), candidate.getLatencyMs()));
+        }
+        return result;
+    }
+
+    private double predictionMae(List<RsiCandidate> selected, List<Double> predictedQuality) {
+        if (selected.isEmpty()) {
+            return 0;
+        }
+        double sum = 0;
+        for (int i = 0; i < selected.size(); i++) {
+            sum += Math.abs(predictedQuality.get(i) - selected.get(i).getQuality());
+        }
+        return sum / selected.size();
+    }
+
+    private static double max(double[] values) {
+        double result = Double.NEGATIVE_INFINITY;
+        for (double value : values) {
+            result = Math.max(result, value);
+        }
+        return result;
+    }
+
+    private static double min(double[] values) {
+        double result = Double.POSITIVE_INFINITY;
+        for (double value : values) {
+            result = Math.min(result, value);
+        }
+        return result;
     }
 
     private double quality(Map<String, Object> genome) {

@@ -41,14 +41,17 @@ public final class RsiDtos {
             double latencyMs,
             double passRate,
             double scalarScore,
-            String status
+            String status,
+            Double predictedScore
     ) {
     }
 
     public record GenerationView(
             int generation,
             double bestScore,
-            List<CandidateView> population
+            List<CandidateView> population,
+            Double predictionMae,
+            String reliability
     ) {
     }
 

@@ -22,6 +22,15 @@ public class RsiGeneration extends BaseEntity {
     @Column(name = "pareto_json", columnDefinition = "TEXT")
     private String paretoJson;
 
+    @Column(name = "world_model_json", columnDefinition = "TEXT")
+    private String worldModelJson;
+
+    @Column(name = "prediction_mae")
+    private Double predictionMae;
+
+    @Column(length = 20)
+    private String reliability;
+
     public UUID getRunId() {
         return runId;
     }
@@ -52,5 +61,29 @@ public class RsiGeneration extends BaseEntity {
 
     public void setParetoJson(String paretoJson) {
         this.paretoJson = paretoJson;
+    }
+
+    public String getWorldModelJson() {
+        return worldModelJson;
+    }
+
+    public void setWorldModelJson(String worldModelJson) {
+        this.worldModelJson = worldModelJson;
+    }
+
+    public Double getPredictionMae() {
+        return predictionMae;
+    }
+
+    public void setPredictionMae(Double predictionMae) {
+        this.predictionMae = predictionMae;
+    }
+
+    public String getReliability() {
+        return reliability;
+    }
+
+    public void setReliability(String reliability) {
+        this.reliability = reliability;
     }
 }
