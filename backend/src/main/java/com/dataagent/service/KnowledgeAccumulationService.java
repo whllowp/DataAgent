@@ -38,17 +38,20 @@ public class KnowledgeAccumulationService {
     private final KnowledgeAccumulationRunRepository runs;
     private final DatasourceRepository datasources;
     private final SqlAssetService sqlAssets;
+    private final KnowledgeExtractionService extractor;
 
     public KnowledgeAccumulationService(QueryExecutionRepository executions,
                                         KnowledgeEntryRepository knowledge,
                                         KnowledgeAccumulationRunRepository runs,
                                         DatasourceRepository datasources,
-                                        SqlAssetService sqlAssets) {
+                                        SqlAssetService sqlAssets,
+                                        KnowledgeExtractionService extractor) {
         this.executions = executions;
         this.knowledge = knowledge;
         this.runs = runs;
         this.datasources = datasources;
         this.sqlAssets = sqlAssets;
+        this.extractor = extractor;
     }
 
     @Transactional
@@ -91,11 +94,14 @@ public class KnowledgeAccumulationService {
                 continue;
             }
             KnowledgeEntry entry = new KnowledgeEntry();
-            entry.setTitle(titleFrom(canonical));
+            String dialect = dialectOf(canonical.getDatasourceId());
+            KnowledgeExtractionService.ExtractionResult extracted = extractor.extract(
+                    canonical.getSqlText(), canonical.getProblem(), canonical.getTags(), dialect);
+            entry.setTitle(extracted.title());
             entry.setProblem(blankToNull(canonical.getProblem()));
             entry.setSqlText(canonical.getSqlText());
-            entry.setDialect(dialectOf(canonical.getDatasourceId()));
-            entry.setTags(mergeTags(canonical.getTags(), "自动累积"));
+            entry.setDialect(extracted.dialect());
+            entry.setTags(mergeTags(extracted.tagsCsv(), "自动累积"));
             entry.setBeforeDurationMs(canonical.getDurationMs() > 0 ? canonical.getDurationMs() : null);
             entry.setAuthor(user);
             entry.setSourceQueryId(canonical.getId());

@@ -372,6 +372,25 @@ guardrails are added. The local fixture is small, so this is a regression
 measurement, not a claim about every tenant. See
 [docs/ACCURACY-10.md](docs/ACCURACY-10.md) for the per-round table and limits.
 
+## Knowledge extraction: 50% target
+
+`GET /api/evolution/extraction-lab?rounds=10` replays a labeled 12-SQL /
+125-fact corpus through ten cumulative extraction policies:
+
+```text
+baseline micro-F1:  55.0%
+retained policy:    98.4%
+relative gain:      +78.9% (+43.4pp)
+extractor latency:  6.2ms cold -> 3.2ms warm (48.8% reduction)
+```
+
+The extractor now proposes titles, tags, dialect, tables, columns, joins and
+metric arguments from SQL, temperature 0 and with no LLM dependency. The
+accumulation path uses those facts when promoting a frequent query into the
+knowledge base. See
+[docs/EXTRACTION-10.md](docs/EXTRACTION-10.md) for the ten-round table,
+reproduction command and boundaries.
+
 ## Roadmap
 
 | 阶段 | 内容 |
